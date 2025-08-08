@@ -1,0 +1,27 @@
+[project]
+name = "entari-plugin-database"
+version = "0.1.0"
+description = "Entari plugin for SQLAlchemy ORM"
+authors = [
+    {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
+]
+dependencies = [
+    "sqlalchemy>=2.0.42",
+    "aiosqlite>=0.21.0",
+]
+requires-python = ">=3.9"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "arclet-entari @ git+https://github.com/ArcletProject/Entari.git",
+]
