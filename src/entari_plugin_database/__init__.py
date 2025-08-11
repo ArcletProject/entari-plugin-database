@@ -1,33 +1,26 @@
-from collections.abc import Sequence
 from dataclasses import field
-from typing import Optional
-from typing import Sequence as TypingSequence  # noqa: UP035
-from typing import Union, get_args, get_origin
+from typing import Optional, Any, Literal
+from typing import Union
 
-from arclet.letoderea import STACK, Contexts
-from arclet.letoderea.provider import Param, Provider, ProviderFactory, global_providers
-from creart import it
-from launart import Launart
-from tarina.generic import origin_is_union
-
-from arclet.entari import BasicConfModel, plugin
+from sqlalchemy.ext.asyncio import create_async_engine
+from arclet.letoderea.scope import global_providers, global_propagators
+from arclet.entari import BasicConfModel, plugin, logger
 from arclet.entari.config import config_model_validate
 from arclet.entari.event.config import ConfigReload
+from graia.amnesia.builtins.sqla import SqlalchemyService
+from graia.amnesia.builtins.sqla.model import register_callback, remove_callback
+from graia.amnesia.builtins.sqla.model import Base as Base
+from graia.amnesia.builtins.sqla.types import EngineOptions
+from sqlalchemy.engine.url import URL
+from sqlalchemy.ext import asyncio as sa_async
+from sqlalchemy.orm import Mapped as Mapped
+from sqlalchemy.orm import mapped_column as mapped_column
 
-try:
-    from graia.amnesia.builtins.sqla import SqlalchemyService
-    from graia.amnesia.builtins.sqla.model import Base as Base
-    from graia.amnesia.builtins.sqla.types import EngineOptions
-    from sqlalchemy.engine.url import URL
-    from sqlalchemy.ext import asyncio as sa_async
-    from sqlalchemy.orm import Mapped as Mapped
-    from sqlalchemy.orm import mapped_column as mapped_column
-    from sqlalchemy.sql import select
-except ImportError:
-    raise ImportError("Please install `sqlalchemy` first. Install with `pip install arclet-entari[db]`") from None
+from .param import db_supplier, sess_provider, orm_factory
+from .param import SQLDepends as SQLDepends
 
 
-class Config(BasicConfModel):
+class UrlInfo(BasicConfModel):
     type: str = "sqlite"
     """数据库类型，默认为 sqlite"""
     name: str = "data.db"
@@ -44,7 +37,6 @@ class Config(BasicConfModel):
     """数据库密码。如果是 SQLite 数据库，此项可不填。"""
     query: dict[str, Union[list[str], str]] = field(default_factory=dict)
     """数据库连接参数，默认为空字典。可以传入如 `{"timeout": "30"}` 的参数。"""
-    options: EngineOptions = field(default_factory=lambda: {"echo": None, "pool_pre_ping": True})
 
     @property
     def url(self) -> URL:
@@ -53,6 +45,17 @@ class Config(BasicConfModel):
         return URL.create(
             f"{self.type}+{self.driver}", self.username, self.password, self.host, self.port, self.name, self.query
         )
+
+
+class Config(UrlInfo):
+    options: EngineOptions = field(default_factory=lambda: {"echo": None, "pool_pre_ping": True})
+    """数据库连接选项，默认为 `{"echo": None, "pool_pre_ping": True}`"""
+    session_options: Union[dict[str, Any], None] = field(default=None)
+    """数据库会话选项，默认为 None。可以传入如 `{"expire_on_commit": False}` 的字典。"""
+    binds: dict[str, UrlInfo]  = field(default_factory=dict)
+    """数据库绑定配置，默认为 None。可以传入如 `{"bind1": UrlInfo(...), "bind2": UrlInfo(...)}` 的字典。"""
+    create_table_at: Literal['preparing', 'prepared', 'blocking'] = "preparing"
+    """在指定阶段创建数据库表，默认为 'preparing'。可选值为 'preparing', 'prepared', 'blocking'。"""
 
 
 plugin.declare_static()
@@ -66,11 +69,25 @@ plugin.metadata(
     },
     config=Config,
 )
+plugin.collect_disposes(
+    lambda: global_propagators.remove(db_supplier),
+    lambda: global_providers.remove(sess_provider),
+    lambda: global_providers.remove(orm_factory),
+)
 
+log = logger.log.wrapper("[Database]")
 _config = plugin.get_config(Config)
 
 try:
-    plugin.add_service(SqlalchemyService(_config.url, _config.options))
+    plugin.add_service(
+        service := SqlalchemyService(
+            _config.url,
+            _config.options,
+            _config.session_options,
+            {key: value.url for key, value in _config.binds.items()},
+            _config.create_table_at
+        )
+    )
 except Exception as e:
     raise RuntimeError("Failed to initialize SqlalchemyService. Please check your database configuration.") from e
 
@@ -79,99 +96,50 @@ except Exception as e:
 async def reload_config(event: ConfigReload, serv: SqlalchemyService):
     if event.scope != "plugin":
         return None
-    if event.key not in ("::database", "arclet.entari.builtins.database"):
+    if event.key not in ("database", "entari_plugin_database"):
         return None
     new_conf = config_model_validate(Config, event.value)
-    await serv.db.stop()
-    serv.db = serv.db.__class__(new_conf.url, new_conf.options)
-    await serv.db.initialize()
-    serv.get_session = serv.db.session_factory
+    for engine in serv.engines.values():
+        await engine.dispose(close=True)
+    engine_options = {"echo": "debug", "pool_pre_ping": True}
+    serv.engines = {"": create_async_engine(new_conf.url, **(new_conf.options or engine_options))}
+    for key, bind in (new_conf.binds or {}).items():
+        serv.engines[key] = create_async_engine(bind.url, **(new_conf.options or engine_options))
+    serv.create_table_at = new_conf.create_table_at
+    serv.session_options = new_conf.session_options or {"expire_on_commit": False}
 
-    async with serv.db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+    binds = await serv.initialize()
+    log.success("Database initialized!")
+    for key, models in binds.items():
+        async with serv.engines[key].begin() as conn:
+            await conn.run_sync(
+                serv.base_class.metadata.create_all, tables=[m.__table__ for m in models], checkfirst=True
+            )
+    log.success("Database tables created!")
     return True
 
 
-BaseOrm = Base
-
-
-class ORMProviderFactory(ProviderFactory):
-    priority = 10
-
-    class _OneProvider(Provider[Base]):
-        def __init__(self, origin: type[Base]):
-            super().__init__()
-            self.origin = origin
-
-        async def __call__(self, context: Contexts):
-            if "$db_session" in context:
-                sess: AsyncSession = context["$db_session"]
-            else:
-                try:
-                    db = it(Launart).get_component(SqlalchemyService)
-                except ValueError:
-                    return
-                stack = context[STACK]
-                sess = await stack.enter_async_context(db.get_session())
-                context["$db_session"] = sess
-            return (await sess.scalars(select(self.origin))).one_or_none()
-
-    class _AllProvider(Provider[Sequence[Base]]):
-        def __init__(self, base: type[Base]):
-            super().__init__()
-            self.base = base
-
-        async def __call__(self, context: Contexts):
-            if "$db_session" in context:
-                sess: AsyncSession = context["$db_session"]
-            else:
-                try:
-                    db = it(Launart).get_component(SqlalchemyService)
-                except ValueError:
-                    return
-                stack = context[STACK]
-                sess = await stack.enter_async_context(db.get_session())
-                context["$db_session"] = sess
-            return (await sess.scalars(select(self.base))).all()
-
-    def validate(self, param: Param):
-        anno = get_origin(param.annotation)
-        if isinstance(anno, type) and issubclass(anno, Base):
-            return self._OneProvider(anno)
-        if origin_is_union(anno):
-            args = get_args(param.annotation)
-            if len(args) == 2 and isinstance(args[0], type) and issubclass(args[0], Base) and args[1] is type(None):
-                return self._OneProvider(args[0])
-        if anno is Sequence or anno is TypingSequence:
-            args = get_args(param.annotation)
-            if len(args) == 1 and isinstance(args[0], type) and issubclass(args[0], Base):
-                return self._AllProvider(args[0])
-
-
-class SessionProvider(Provider[sa_async.AsyncSession]):
-    priority = 10
-
-    async def __call__(self, context: Contexts):
-        if "$db_session" in context:
-            return context["$db_session"]
-        try:
-            db = it(Launart).get_component(SqlalchemyService)
-            stack = context[STACK]
-            sess = await stack.enter_async_context(db.get_session())
-            context["$db_session"] = sess
-            return sess
-        except ValueError:
+def _setup_tablename(cls: type[Base], kwargs: dict):
+    if "tablename" in kwargs:
+        return
+    for attr in ("__tablename__", "__table__"):
+        if getattr(cls, attr, None):
             return
 
+    cls.__tablename__ = cls.__name__.lower()
 
-_factory = ORMProviderFactory()
-_session_provider = SessionProvider()
-global_providers.append(_factory)
-global_providers.append(_session_provider)
-plugin.collect_disposes(lambda: global_providers.remove(_factory), lambda: global_providers.remove(_session_provider))
+    if plg := plugin.get_plugin(3):
+        cls.__tablename__ = f"{plg.id.replace('-', '_')}_{cls.__tablename__}"
 
+
+register_callback(_setup_tablename)
+plugin.collect_disposes(lambda: remove_callback(_setup_tablename))
+
+
+BaseOrm = Base
 AsyncSession = sa_async.AsyncSession
+get_session = service.get_session
+
 
 __all__ = [
     "AsyncSession",
@@ -179,8 +147,8 @@ __all__ = [
     "BaseOrm",
     "Mapped",
     "mapped_column",
-    "EngineOptions",
-    "URL",
-    "SqlalchemyService",
-    "Config",
+    "service",
+    "SQLDepends",
+    "get_session",
+    "SqlalchemyService"
 ]

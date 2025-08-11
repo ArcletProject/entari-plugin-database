@@ -8,6 +8,9 @@ authors = [
 dependencies = [
     "sqlalchemy>=2.0.42",
     "aiosqlite>=0.21.0",
+    "graia-amnesia>=0.10.1",
+    "tarina<0.8.0,>=0.7.1",
+    "arclet-entari>=0.15.0rc1",
 ]
 requires-python = ">=3.9"
 readme = "README.md"
@@ -23,5 +26,5 @@ distribution = true
 
 [tool.pdm.dev-dependencies]
 dev = [
-    "arclet-entari @ git+https://github.com/ArcletProject/Entari.git",
+    "arclet-entari[full]>=0.15.0rc1",
 ]
