@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:499baa249a5cf30e3e8a8612891a6530c2ecebb572c193b20bcc1acb65822a9c"
+content_hash = "sha256:87812644dfc763aafa42138adfd2863e26fc5ed26e5f8e4ebe46a590db5c0383"
 
 [[metadata.targets]]
 requires_python = ">=3.9"
@@ -174,7 +174,7 @@ files = [
 
 [[package]]
 name = "arclet-alconna"
-version = "1.8.42"
+version = "1.8.43"
 requires_python = ">=3.9"
 summary = "A High-performance, Generality, Humane Command Line Arguments Parser Library."
 groups = ["default", "dev"]
@@ -184,8 +184,8 @@ dependencies = [
     "typing-extensions>=4.5.0",
 ]
 files = [
-    {file = "arclet_alconna-1.8.42-py3-none-any.whl", hash = "sha256:dc9115f778b2f33830edb7aafc77d1109ca6466546083959f6c3ba7e0e098823"},
-    {file = "arclet_alconna-1.8.42.tar.gz", hash = "sha256:87d4708f923439515aec8c13b7024aa37bfdd50ada9a60f581e7fc11691da5b7"},
+    {file = "arclet_alconna-1.8.43-py3-none-any.whl", hash = "sha256:fd38ee4ca6404f7b698be8d9ec47248f9a95008d4d80c824375811ef5183d2c6"},
+    {file = "arclet_alconna-1.8.43.tar.gz", hash = "sha256:23c89d334f4d44e2130f1abc63d8641ac39be9009be023ebd08c2739bbef42c9"},
 ]
 
 [[package]]
@@ -205,40 +205,41 @@ files = [
 
 [[package]]
 name = "arclet-entari"
-version = "0.15.0rc1"
+version = "0.15.0"
 requires_python = ">=3.9"
 summary = "Simple IM Framework based on satori-python"
 groups = ["default", "dev"]
 dependencies = [
     "arclet-alconna-tools>=0.7.3",
     "arclet-alconna<2.0.0,>=1.8.42",
-    "arclet-letoderea<0.19.0,>=0.18.0",
+    "arclet-letoderea<0.19.0,>=0.18.1",
     "nonestorage>=0.1.0",
     "satori-python-client>=0.15.2",
     "satori-python-core>=0.15.2",
 ]
 files = [
-    {file = "arclet_entari-0.15.0rc1-py3-none-any.whl", hash = "sha256:dff427c7eae6c9d82d055db4a1c0c94f309ad4b1b128574bf2eb7157190695f2"},
-    {file = "arclet_entari-0.15.0rc1.tar.gz", hash = "sha256:0e7cb08e0c4acce5a8e9a590a067c8bdb6eb2f992ff9d71f3ca63a75c429f212"},
+    {file = "arclet_entari-0.15.0-py3-none-any.whl", hash = "sha256:ce1948c82762bbbbaad7aeaab9c8a19a1d8757e169fc85f0c3ea3620aa2e4ec4"},
+    {file = "arclet_entari-0.15.0.tar.gz", hash = "sha256:4063b365a4536e1264ea1c8e54b1944094321bf2c26d7b8f3ad14e854dd4bc7b"},
 ]
 
 [[package]]
 name = "arclet-entari"
-version = "0.15.0rc1"
+version = "0.15.0"
 extras = ["full"]
 requires_python = ">=3.9"
 summary = "Simple IM Framework based on satori-python"
 groups = ["dev"]
 dependencies = [
-    "arclet-entari==0.15.0rc1",
+    "arclet-entari==0.15.0",
     "croniter>=5.0.1",
+    "entari-cli>=0.1.0",
     "python-dotenv>=1.0.1",
     "ruamel-yaml>=0.18.10",
     "watchfiles>=1.0.3",
 ]
 files = [
-    {file = "arclet_entari-0.15.0rc1-py3-none-any.whl", hash = "sha256:dff427c7eae6c9d82d055db4a1c0c94f309ad4b1b128574bf2eb7157190695f2"},
-    {file = "arclet_entari-0.15.0rc1.tar.gz", hash = "sha256:0e7cb08e0c4acce5a8e9a590a067c8bdb6eb2f992ff9d71f3ca63a75c429f212"},
+    {file = "arclet_entari-0.15.0-py3-none-any.whl", hash = "sha256:ce1948c82762bbbbaad7aeaab9c8a19a1d8757e169fc85f0c3ea3620aa2e4ec4"},
+    {file = "arclet_entari-0.15.0.tar.gz", hash = "sha256:4063b365a4536e1264ea1c8e54b1944094321bf2c26d7b8f3ad14e854dd4bc7b"},
 ]
 
 [[package]]
@@ -279,12 +280,27 @@ files = [
 ]
 
 [[package]]
+name = "cli-lite"
+version = "0.11.1"
+requires_python = ">=3.9"
+summary = "A simple framework to build a cli tool, base on Alconna"
+groups = ["dev"]
+dependencies = [
+    "arclet-alconna-tools>=0.7.11",
+    "arclet-alconna>=1.8.43",
+    "importlib-metadata>=3.6.0",
+]
+files = [
+    {file = "cli_lite-0.11.1-py3-none-any.whl", hash = "sha256:f928feca704ab0ef57b37e9cf22cf989bba84ae12352f2d438399cbae1f469d6"},
+    {file = "cli_lite-0.11.1.tar.gz", hash = "sha256:a92f561948c8ee0bd425f99bf8533fbb5420fb6a63e6d8905ecf3694d86b8652"},
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 requires_python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 summary = "Cross-platform colored terminal text."
 groups = ["default", "dev"]
-marker = "sys_platform == \"win32\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
@@ -320,6 +336,26 @@ files = [
 ]
 
 [[package]]
+name = "entari-cli"
+version = "0.1.0"
+requires_python = ">=3.9"
+summary = "Entari Command Line Tool, extract from arclet.entari.__main__"
+groups = ["dev"]
+dependencies = [
+    "cli-lite>=0.11.0",
+    "colorama>=0.4.6",
+    "findpython>=0.7.0",
+    "packaging>=25.0",
+    "python-dotenv>=1.1.1",
+    "ruamel-yaml>=0.18.15",
+    "tomlkit>=0.13.3",
+]
+files = [
+    {file = "entari_cli-0.1.0-py3-none-any.whl", hash = "sha256:49f04247dd2ebaf081b6630820d7e35b2304977624d4064611000cc36da2f89a"},
+    {file = "entari_cli-0.1.0.tar.gz", hash = "sha256:1e048b92c1c48d325bd9ce484ead74b0278992afb8ec90ff9ed95bc52b58089e"},
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.0"
 requires_python = ">=3.7"
@@ -332,6 +368,21 @@ dependencies = [
 files = [
     {file = "exceptiongroup-1.3.0-py3-none-any.whl", hash = "sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10"},
     {file = "exceptiongroup-1.3.0.tar.gz", hash = "sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88"},
+]
+
+[[package]]
+name = "findpython"
+version = "0.7.0"
+requires_python = ">=3.8"
+summary = "A utility to find python versions on your system"
+groups = ["dev"]
+dependencies = [
+    "packaging>=20",
+    "platformdirs>=4.3.6",
+]
+files = [
+    {file = "findpython-0.7.0-py3-none-any.whl", hash = "sha256:f53cfcc29536f5b83c962cf922bba8ff6d6a3c2a05fda6a45aa58a47d005d8fc"},
+    {file = "findpython-0.7.0.tar.gz", hash = "sha256:8b31647c76352779a3c1a0806699b68e6a7bdc0b5c2ddd9af2a07a0d40c673dc"},
 ]
 
 [[package]]
@@ -733,6 +784,28 @@ files = [
 ]
 
 [[package]]
+name = "packaging"
+version = "25.0"
+requires_python = ">=3.8"
+summary = "Core utilities for Python packages"
+groups = ["dev"]
+files = [
+    {file = "packaging-25.0-py3-none-any.whl", hash = "sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484"},
+    {file = "packaging-25.0.tar.gz", hash = "sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f"},
+]
+
+[[package]]
+name = "platformdirs"
+version = "4.3.8"
+requires_python = ">=3.9"
+summary = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
+groups = ["dev"]
+files = [
+    {file = "platformdirs-4.3.8-py3-none-any.whl", hash = "sha256:ff7059bb7eb1179e2685604f4aaf157cfd9535242bd23742eadc3c13542139b4"},
+    {file = "platformdirs-4.3.8.tar.gz", hash = "sha256:3d512d96e16bcb959a814c9f348431070822a6496326a4be0911c40b5a74c2bc"},
+]
+
+[[package]]
 name = "propcache"
 version = "0.3.2"
 requires_python = ">=3.9"
@@ -876,7 +949,7 @@ files = [
 
 [[package]]
 name = "ruamel-yaml"
-version = "0.18.14"
+version = "0.18.15"
 requires_python = ">=3.8"
 summary = "ruamel.yaml is a YAML parser/emitter that supports roundtrip preservation of comments, seq/map flow style, and map key order"
 groups = ["dev"]
@@ -884,8 +957,8 @@ dependencies = [
     "ruamel-yaml-clib>=0.2.7; platform_python_implementation == \"CPython\" and python_version < \"3.14\"",
 ]
 files = [
-    {file = "ruamel.yaml-0.18.14-py3-none-any.whl", hash = "sha256:710ff198bb53da66718c7db27eec4fbcc9aa6ca7204e4c1df2f282b6fe5eb6b2"},
-    {file = "ruamel.yaml-0.18.14.tar.gz", hash = "sha256:7227b76aaec364df15936730efbf7d72b30c0b79b1d578bbb8e3dcb2d81f52b7"},
+    {file = "ruamel.yaml-0.18.15-py3-none-any.whl", hash = "sha256:148f6488d698b7a5eded5ea793a025308b25eca97208181b6a026037f391f701"},
+    {file = "ruamel.yaml-0.18.15.tar.gz", hash = "sha256:dbfca74b018c4c3fba0b9cc9ee33e53c371194a9000e694995e620490fd40700"},
 ]
 
 [[package]]
@@ -1186,6 +1259,17 @@ files = [
     {file = "tarina-0.7.1-cp39-cp39-win_arm64.whl", hash = "sha256:da73ace319abe67fd294da00506eaae62eb87fbc4b43eec335a8c0cc85f84a48"},
     {file = "tarina-0.7.1-py3-none-any.whl", hash = "sha256:2019b326f0ac5d566a49ea36621f6d23b59bec92d116c0eb00669aef043273a3"},
     {file = "tarina-0.7.1.tar.gz", hash = "sha256:cbf72dd791fa3d5f990d1c23ba14646615c1c1b811ae73e010e921abb271d57c"},
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.13.3"
+requires_python = ">=3.8"
+summary = "Style preserving TOML library"
+groups = ["dev"]
+files = [
+    {file = "tomlkit-0.13.3-py3-none-any.whl", hash = "sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0"},
+    {file = "tomlkit-0.13.3.tar.gz", hash = "sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1"},
 ]
 
 [[package]]

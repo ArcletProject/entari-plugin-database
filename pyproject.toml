@@ -10,7 +10,7 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "graia-amnesia>=0.10.1",
     "tarina<0.8.0,>=0.7.1",
-    "arclet-entari>=0.15.0rc1",
+    "arclet-entari>=0.15.0",
 ]
 requires-python = ">=3.9"
 readme = "README.md"
@@ -26,5 +26,5 @@ distribution = true
 
 [tool.pdm.dev-dependencies]
 dev = [
-    "arclet-entari[full]>=0.15.0rc1",
+    "arclet-entari[full]>=0.15.0",
 ]

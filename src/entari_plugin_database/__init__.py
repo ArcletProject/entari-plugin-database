@@ -61,11 +61,11 @@ class Config(UrlInfo):
 plugin.declare_static()
 plugin.metadata(
     "Database 服务",
-    ["RF-Tar-Railt <rf_tar_railt@qq.com>"],
+    [{"name": "RF-Tar-Railt", "email": "rf_tar_railt@qq.com"}],
     "0.1.0",
     description="基于 SQLAlchemy 的数据库服务插件",
     urls={
-        "homepage": "https://github.com/ArcletProject/Entari/tree/main/arclet/entari/builtins/database.py",
+        "homepage": "https://github.com/ArcletProject/entari-plugin-database",
     },
     config=Config,
 )
