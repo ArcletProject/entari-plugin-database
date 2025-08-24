@@ -153,11 +153,11 @@ class SQLDepend(Depend):
         self.statement = statement
         self.option = option
 
-        async def target(session: sa_async.AsyncSession,  **params):
+        async def target(db_session: sa_async.AsyncSession,  **params):
             if self.option.stream:
-                result = await session.stream(self.statement, params)
+                result = await db_session.stream(self.statement, params)
             else:
-                result = await session.execute(self.statement, params)
+                result = await db_session.execute(self.statement, params)
             if self.option.scalars:
                 result = result.scalars()
             for call in self.option.calls:
@@ -168,7 +168,7 @@ class SQLDepend(Depend):
                     result = await result
             return result
 
-        parameters = [Parameter("session", Parameter.KEYWORD_ONLY, annotation=sa_async.AsyncSession)]
+        parameters = [Parameter("db_session", Parameter.KEYWORD_ONLY, annotation=sa_async.AsyncSession)]
         for name, depends in self.statement.compile().params.items():
             if isinstance(depends, Depend):
                 parameters.append(Parameter(name, Parameter.KEYWORD_ONLY, default=depends))
@@ -210,14 +210,14 @@ class ORMProviderFactory(ProviderFactory):
             return result
 
     def validate(self, param: Param):
-        if isinstance(param.default, SQLDepend):
-            return
         for pattern, option in PATTERNS.items():
             if models := cast("list[Any]", generic_issubclass(pattern, param.annotation, list_=True)):
                 break
         else:
             models, option = [], Option()
-
+        if isinstance(param.default, SQLDepend):
+            param.default.option = option
+            return
         for index, model in enumerate(models):
             if origin_is_union(get_origin(model)):
                 models[index] = next(

@@ -12,6 +12,7 @@ from graia.amnesia.builtins.sqla.model import register_callback, remove_callback
 from graia.amnesia.builtins.sqla.model import Base as Base
 from graia.amnesia.builtins.sqla.types import EngineOptions
 from sqlalchemy.engine.url import URL
+from sqlalchemy import select as select
 from sqlalchemy.ext import asyncio as sa_async
 from sqlalchemy.orm import Mapped as Mapped
 from sqlalchemy.orm import mapped_column as mapped_column
@@ -150,5 +151,6 @@ __all__ = [
     "service",
     "SQLDepends",
     "get_session",
+    "select",
     "SqlalchemyService"
 ]
