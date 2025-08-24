@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:87812644dfc763aafa42138adfd2863e26fc5ed26e5f8e4ebe46a590db5c0383"
+content_hash = "sha256:1b61e6b358dc0077d86e94524f4a5df0debb6bb62f0854172b07fde1d86f5ff0"
 
 [[metadata.targets]]
 requires_python = ">=3.9"
@@ -205,7 +205,7 @@ files = [
 
 [[package]]
 name = "arclet-entari"
-version = "0.15.0"
+version = "0.15.1"
 requires_python = ">=3.9"
 summary = "Simple IM Framework based on satori-python"
 groups = ["default", "dev"]
@@ -218,19 +218,19 @@ dependencies = [
     "satori-python-core>=0.15.2",
 ]
 files = [
-    {file = "arclet_entari-0.15.0-py3-none-any.whl", hash = "sha256:ce1948c82762bbbbaad7aeaab9c8a19a1d8757e169fc85f0c3ea3620aa2e4ec4"},
-    {file = "arclet_entari-0.15.0.tar.gz", hash = "sha256:4063b365a4536e1264ea1c8e54b1944094321bf2c26d7b8f3ad14e854dd4bc7b"},
+    {file = "arclet_entari-0.15.1-py3-none-any.whl", hash = "sha256:4d5d85b6ea1badc1c5d9184b378c3850536212fad18638bb3951637a3c77014d"},
+    {file = "arclet_entari-0.15.1.tar.gz", hash = "sha256:c18dee661c5b135a812107d8646a01b8ce46e2598e36282314ffd2c61d3f7949"},
 ]
 
 [[package]]
 name = "arclet-entari"
-version = "0.15.0"
+version = "0.15.1"
 extras = ["full"]
 requires_python = ">=3.9"
 summary = "Simple IM Framework based on satori-python"
 groups = ["dev"]
 dependencies = [
-    "arclet-entari==0.15.0",
+    "arclet-entari==0.15.1",
     "croniter>=5.0.1",
     "entari-cli>=0.1.0",
     "python-dotenv>=1.0.1",
@@ -238,8 +238,8 @@ dependencies = [
     "watchfiles>=1.0.3",
 ]
 files = [
-    {file = "arclet_entari-0.15.0-py3-none-any.whl", hash = "sha256:ce1948c82762bbbbaad7aeaab9c8a19a1d8757e169fc85f0c3ea3620aa2e4ec4"},
-    {file = "arclet_entari-0.15.0.tar.gz", hash = "sha256:4063b365a4536e1264ea1c8e54b1944094321bf2c26d7b8f3ad14e854dd4bc7b"},
+    {file = "arclet_entari-0.15.1-py3-none-any.whl", hash = "sha256:4d5d85b6ea1badc1c5d9184b378c3850536212fad18638bb3951637a3c77014d"},
+    {file = "arclet_entari-0.15.1.tar.gz", hash = "sha256:c18dee661c5b135a812107d8646a01b8ce46e2598e36282314ffd2c61d3f7949"},
 ]
 
 [[package]]
