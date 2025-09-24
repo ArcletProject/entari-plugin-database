@@ -10,9 +10,9 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "graia-amnesia>=0.10.1",
     "tarina<0.8.0,>=0.7.1",
-    "arclet-entari<0.16.0,>=0.15.1",
+    "arclet-entari<0.17.0,>=0.16.1",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
 

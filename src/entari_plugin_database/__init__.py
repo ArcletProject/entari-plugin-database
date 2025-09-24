@@ -3,7 +3,8 @@ from typing import Optional, Any, Literal
 from typing import Union
 
 from sqlalchemy.ext.asyncio import create_async_engine
-from arclet.letoderea.scope import global_providers, global_propagators
+from arclet.letoderea.provider import global_providers
+from arclet.letoderea.scope import global_propagators
 from arclet.entari import BasicConfModel, plugin, logger
 from arclet.entari.config import config_model_validate
 from arclet.entari.event.config import ConfigReload
@@ -53,7 +54,7 @@ class Config(UrlInfo):
     """数据库连接选项，默认为 `{"echo": None, "pool_pre_ping": True}`"""
     session_options: Union[dict[str, Any], None] = field(default=None)
     """数据库会话选项，默认为 None。可以传入如 `{"expire_on_commit": False}` 的字典。"""
-    binds: dict[str, UrlInfo]  = field(default_factory=dict)
+    binds: dict[str, UrlInfo] = field(default_factory=dict)
     """数据库绑定配置，默认为 None。可以传入如 `{"bind1": UrlInfo(...), "bind2": UrlInfo(...)}` 的字典。"""
     create_table_at: Literal['preparing', 'prepared', 'blocking'] = "preparing"
     """在指定阶段创建数据库表，默认为 'preparing'。可选值为 'preparing', 'prepared', 'blocking'。"""

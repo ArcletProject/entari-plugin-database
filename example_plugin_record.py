@@ -49,8 +49,8 @@ class RecordRunningTime(Propagator):
 @plug.dispatch(PluginLoadedSuccess)
 async def hook(event: PluginLoadedSuccess):
     """Hook to print plugin load information"""
-    if event.name == plug.id:
+    if event.plugin_id == plug.id:
         return
-    subscribers = get_plugin_subscribers(event.name)
+    subscribers = get_plugin_subscribers(event.plugin_id)
     for sub in subscribers:
         plug.collect(sub.propagate(RecordRunningTime(f"{sub.callable_target.__module__}.{sub.callable_target.__qualname__}")))

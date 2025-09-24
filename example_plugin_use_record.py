@@ -1,5 +1,5 @@
 from typing import Sequence
-from arclet.entari import PluginMetadata, Session, command, Param
+from arclet.entari import PluginMetadata, Session, command, param
 from entari_plugin_database import SQLDepends
 from sqlalchemy import select
 from example_plugin_record import Record
@@ -20,7 +20,7 @@ async def read(sess: Session, recs: Sequence[Record]):
 
 
 @command.command("check <name:str>")
-async def check(plugin_name: str = Param("name"), recs: Sequence[Record] = SQLDepends(select(Record).where(Record.name.startswith(Param("name"))))):
+async def check(plugin_name: str = param("name"), recs: Sequence[Record] = SQLDepends(select(Record).where(Record.name.startswith(param("name"))))):
     """检查某个任务的运行时间"""
     records = []
     for rec in recs:

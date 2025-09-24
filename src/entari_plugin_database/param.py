@@ -16,9 +16,10 @@ from creart import it
 from launart import Launart
 from graia.amnesia.builtins.sqla import SqlalchemyService, Base
 
-from arclet.letoderea import Propagator, Contexts, STACK, Provider, ProviderFactory, Param, Depend, Subscriber
+from arclet.letoderea import Propagator, Contexts, STACK, Provider, ProviderFactory, Param, Depend, get_params
 from arclet.letoderea.ref import Deref, generate
-from arclet.letoderea.scope import global_propagators, global_providers
+from arclet.letoderea.provider import global_providers
+from arclet.letoderea.scope import global_propagators
 from sqlalchemy.ext import asyncio as sa_async
 
 
@@ -26,6 +27,13 @@ class DatabasePropagator(Propagator):
     async def supply(self, ctx: Contexts, serv: Optional[SqlalchemyService] = None):
         if serv is None:
             return
+        # params = get_params(ctx)
+        # if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
+        #     pass
+        # elif any(isinstance(prod, ORMProviderFactory._ModelProvider) for p in params for prod in p.providers):
+        #     pass
+        # else:
+        #     return
         session = serv.get_session()
         stack = ctx[STACK]
         session = await stack.enter_async_context(session)
