@@ -16,7 +16,7 @@ from creart import it
 from launart import Launart
 from graia.amnesia.builtins.sqla import SqlalchemyService, Base
 
-from arclet.letoderea import Propagator, Contexts, STACK, Provider, ProviderFactory, Param, Depend, get_params
+from arclet.letoderea import Propagator, Contexts, STACK, Provider, ProviderFactory, Param, Depend, Subscriber
 from arclet.letoderea.ref import Deref, generate
 from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
@@ -24,16 +24,17 @@ from sqlalchemy.ext import asyncio as sa_async
 
 
 class DatabasePropagator(Propagator):
+    def validate(self, subscriber: Subscriber):
+        params = subscriber.params
+        if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
+            return True
+        if any(isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider)) for p in params for prod in p.providers):
+            return True
+        return False
+
     async def supply(self, ctx: Contexts, serv: Optional[SqlalchemyService] = None):
         if serv is None:
             return
-        # params = get_params(ctx)
-        # if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
-        #     pass
-        # elif any(isinstance(prod, ORMProviderFactory._ModelProvider) for p in params for prod in p.providers):
-        #     pass
-        # else:
-        #     return
         session = serv.get_session()
         stack = ctx[STACK]
         session = await stack.enter_async_context(session)
@@ -184,6 +185,12 @@ class SQLDepend(Depend):
                 parameters.append(Parameter(name, Parameter.KEYWORD_ONLY, default=Depend(generate(depends))))
         target.__signature__ = Signature(parameters)  # type: ignore
         self.target = target
+
+    def fork(self, provider: list[Provider | ProviderFactory]):
+        if hasattr(self, "sub"):  # pragma: no cover
+            return self
+        self.sub = Subscriber(self.target, providers=provider)
+        return self
 
 
 def SQLDepends(statement: ExecutableReturnsRows, option: Option = Option(), cache: bool = False) -> Any:
