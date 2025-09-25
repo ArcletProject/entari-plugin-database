@@ -23,7 +23,7 @@ from sqlalchemy.orm import mapped_column as mapped_column
 from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
 from .utils import logger
-from .migration import _LOCK, _FILE_MODELS, run_migration_for
+from .migration import _LOCK, _FILE_MODELS, run_migration_for, register_custom_migration
 
 
 class UrlInfo(BasicConfModel):
@@ -202,4 +202,5 @@ __all__ = [
     "get_session",
     "select",
     "SqlalchemyService",
+    "register_custom_migration",
 ]
