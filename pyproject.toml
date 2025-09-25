@@ -12,6 +12,7 @@ dependencies = [
     "tarina<0.8.0,>=0.7.1",
     "arclet-entari<0.17.0,>=0.16.1",
     "arclet-letoderea>=0.19.5",
+    "alembic>=1.16.5",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -29,3 +30,12 @@ distribution = true
 dev = [
     "arclet-entari[full]>=0.15.0",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+include = ["src/**.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "UP", "C", "T", "PYI", "PT", "Q"]
+ignore = ["C901", "T201", "E731", "E402", "PYI055"]

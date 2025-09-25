@@ -1,8 +1,9 @@
 import time
 from typing import Optional
 from arclet.letoderea import Propagator
+from arclet.entari import Plugin
 from arclet.entari.event.plugin import PluginLoadedSuccess
-from arclet.entari.plugin import Plugin, PluginMetadata, get_plugin_subscribers
+from arclet.entari.plugin import PluginMetadata, get_plugin_subscribers
 from entari_plugin_database import AsyncSession, BaseOrm, mapped_column, Mapped
 from sqlalchemy.sql import select
 

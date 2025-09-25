@@ -3,14 +3,14 @@ from inspect import Signature, Parameter
 from operator import methodcaller
 
 from collections.abc import Iterator, Sequence, AsyncIterator
-from typing import Optional
 
 from sqlalchemy import Row, Result, ScalarResult, select
 from sqlalchemy.ext.asyncio import AsyncResult, AsyncScalarResult
 from sqlalchemy.sql.selectable import ExecutableReturnsRows
 from tarina import generic_issubclass
 from tarina.generic import origin_is_union, isclass
-from typing_extensions import Any, cast, get_args, get_origin
+from typing_extensions import Any
+from typing import cast, get_args, get_origin
 
 from creart import it
 from launart import Launart
@@ -28,11 +28,11 @@ class DatabasePropagator(Propagator):
         params = subscriber.params
         if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
             return True
-        if any(isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider)) for p in params for prod in p.providers):
+        if any(isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider)) for p in params for prod in p.providers):  # noqa: E501,UP038
             return True
         return False
 
-    async def supply(self, ctx: Contexts, serv: Optional[SqlalchemyService] = None):
+    async def supply(self, ctx: Contexts, serv: SqlalchemyService | None = None):
         if serv is None:
             return
         session = serv.get_session()

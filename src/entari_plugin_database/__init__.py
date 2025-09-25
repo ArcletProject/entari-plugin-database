@@ -1,11 +1,13 @@
+import asyncio
+import inspect
 from dataclasses import field
-from typing import Optional, Any, Literal
-from typing import Union
+from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import create_async_engine
 from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
-from arclet.entari import BasicConfModel, plugin, logger
+from arclet.letoderea.core import add_task
+from arclet.entari import BasicConfModel, plugin
 from arclet.entari.config import config_model_validate
 from arclet.entari.event.config import ConfigReload
 from graia.amnesia.builtins.sqla import SqlalchemyService
@@ -20,6 +22,8 @@ from sqlalchemy.orm import mapped_column as mapped_column
 
 from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
+from .utils import logger
+from .migration import _LOCK, _FILE_MODELS, run_migration_for
 
 
 class UrlInfo(BasicConfModel):
@@ -29,15 +33,15 @@ class UrlInfo(BasicConfModel):
     """数据库名称/文件路径"""
     driver: str = "aiosqlite"
     """数据库驱动，默认为 aiosqlite；其他类型的数据库驱动参考 SQLAlchemy 文档"""
-    host: Optional[str] = None
+    host: str | None = None
     """数据库主机地址。如果是 SQLite 数据库，此项可不填。"""
-    port: Optional[int] = None
+    port: int | None = None
     """数据库端口号。如果是 SQLite 数据库，此项可不填。"""
-    username: Optional[str] = None
+    username: str | None = None
     """数据库用户名。如果是 SQLite 数据库，此项可不填。"""
-    password: Optional[str] = None
+    password: str | None = None
     """数据库密码。如果是 SQLite 数据库，此项可不填。"""
-    query: dict[str, Union[list[str], str]] = field(default_factory=dict)
+    query: dict[str, list[str] | str] = field(default_factory=dict)
     """数据库连接参数，默认为空字典。可以传入如 `{"timeout": "30"}` 的参数。"""
 
     @property
@@ -52,11 +56,11 @@ class UrlInfo(BasicConfModel):
 class Config(UrlInfo):
     options: EngineOptions = field(default_factory=lambda: {"echo": None, "pool_pre_ping": True})
     """数据库连接选项，默认为 `{"echo": None, "pool_pre_ping": True}`"""
-    session_options: Union[dict[str, Any], None] = field(default=None)
+    session_options: dict[str, Any] | None = field(default=None)
     """数据库会话选项，默认为 None。可以传入如 `{"expire_on_commit": False}` 的字典。"""
     binds: dict[str, UrlInfo] = field(default_factory=dict)
     """数据库绑定配置，默认为 None。可以传入如 `{"bind1": UrlInfo(...), "bind2": UrlInfo(...)}` 的字典。"""
-    create_table_at: Literal['preparing', 'prepared', 'blocking'] = "preparing"
+    create_table_at: Literal["preparing", "prepared", "blocking"] = "preparing"
     """在指定阶段创建数据库表，默认为 'preparing'。可选值为 'preparing', 'prepared', 'blocking'。"""
 
 
@@ -77,7 +81,6 @@ plugin.collect_disposes(
     lambda: global_providers.remove(orm_factory),
 )
 
-log = logger.log.wrapper("[Database]")
 _config = plugin.get_config(Config)
 
 try:
@@ -111,18 +114,25 @@ async def reload_config(event: ConfigReload, serv: SqlalchemyService):
     serv.session_options = new_conf.session_options or {"expire_on_commit": False}
 
     binds = await serv.initialize()
-    log.success("Database initialized!")
+    logger.success("Database initialized!")
     for key, models in binds.items():
         async with serv.engines[key].begin() as conn:
             await conn.run_sync(
                 serv.base_class.metadata.create_all, tables=[m.__table__ for m in models], checkfirst=True
             )
-    log.success("Database tables created!")
+    logger.success("Database tables created!")
     return True
+
+
+def _clean_exist(cls: type[Base], kwargs: dict):
+    if cls.__tablename__ in Base.metadata.tables:
+        cls.registry.dispose()
+        dict.pop(Base.metadata.tables, cls.__tablename__, None)
 
 
 def _setup_tablename(cls: type[Base], kwargs: dict):
     if "tablename" in kwargs:
+        cls.__tablename__ = kwargs["tablename"]
         return
     for attr in ("__tablename__", "__table__"):
         if getattr(cls, attr, None):
@@ -134,8 +144,46 @@ def _setup_tablename(cls: type[Base], kwargs: dict):
         cls.__tablename__ = f"{plg.id.replace('-', '_')}_{cls.__tablename__}"
 
 
+_PENDING_FILE_TASK: set[str] = set()
+
+
+def migration_callback(cls: type[Base], kwargs: dict):
+    # 只有拥有 __tablename__ / __table__ 的实体才考虑
+    if not (hasattr(cls, "__tablename__") or hasattr(cls, "__table__")):
+        return
+    try:
+        source_file = inspect.getsourcefile(cls)
+    except Exception:
+        return
+    if not source_file:
+        return
+    with _LOCK:
+        _FILE_MODELS.setdefault(source_file, set()).add(cls)
+        # 避免同一文件重复并发执行, 使用一次性调度
+        if source_file in _PENDING_FILE_TASK:
+            return
+        _PENDING_FILE_TASK.add(source_file)
+
+    async def _delayed():
+        # 给同一文件内后续类定义一点时间注册
+        await asyncio.sleep(0)  # 让出事件循环
+        try:
+            await run_migration_for(source_file, service)
+        except Exception as e:
+            logger.exception(f"[Migration] 处理文件 {source_file} 失败: {e}", exc_info=e)
+        finally:
+            with _LOCK:
+                _PENDING_FILE_TASK.discard(source_file)
+
+    add_task(_delayed())
+
+
 register_callback(_setup_tablename)
+register_callback(_clean_exist)
+register_callback(migration_callback)
+plugin.collect_disposes(lambda: remove_callback(_clean_exist))
 plugin.collect_disposes(lambda: remove_callback(_setup_tablename))
+plugin.collect_disposes(lambda: remove_callback(migration_callback))
 
 
 BaseOrm = Base
@@ -153,5 +201,5 @@ __all__ = [
     "SQLDepends",
     "get_session",
     "select",
-    "SqlalchemyService"
+    "SqlalchemyService",
 ]
