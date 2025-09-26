@@ -44,15 +44,14 @@ class CustomMigration:
 _CUSTOM_MIGRATIONS: dict[str, list[CustomMigration]] = {}
 
 
-# register_custom_migration 函数保持不变...
 def register_custom_migration(
-        model_or_table: str | type[Base],
-        type: Literal["upgrade", "downgrade"] = "upgrade",
-        *,
-        script_id: str | None = None,
-        script_rev: str = "1",
-        replace: bool = True,
-        run_always: bool = False,
+    model_or_table: str | type[Base],
+    type: Literal["upgrade", "downgrade"] = "upgrade",
+    *,
+    script_id: str | None = None,
+    script_rev: str = "1",
+    replace: bool = True,
+    run_always: bool = False,
 ):
     """
     注册自定义迁移脚本。
@@ -124,10 +123,6 @@ def _save_state(data: dict[str, Any]):
     tmp.replace(_STATE_FILE)
 
 
-# ======================================================================
-# 1. 重构哈希机制 (Refactored Hashing Mechanism)
-# ======================================================================
-
 def _get_table_structure(table: Table) -> dict[str, Any]:
     """将 SQLAlchemy Table 对象序列化为字典，用于后续哈希计算"""
     data = {
@@ -175,7 +170,6 @@ def _model_revision(model: type[Base]) -> str:
     return _compute_structure_hash(table)
 
 
-# _include_tables_factory, _execute_script, _resolve_script_record, _plan_script 保持不变
 def _include_tables_factory(target_tables: set[str]) -> Callable[[Any, str, str, bool, Any], bool]:
     def include(obj, name, type_, reflected, compare_to):  # type: ignore
         if type_ == "table":
@@ -238,13 +232,8 @@ def _plan_script(entry: dict, cm: CustomMigration) -> str | None:
     return "upgrade"
 
 
-# ======================================================================
-# 2. 重构 run_migration_for 为规划和执行两个阶段 (Refactored main function)
-# ======================================================================
-
 def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict[str, Any]:
     """
-    第一阶段：规划。
     分析模型，生成一个包含所有待办事项的“迁移计划”，不执行任何数据库操作。
     """
     model_info: dict[str, dict[str, Any]] = {}
@@ -342,7 +331,6 @@ def _update_state_for_script(state: dict, table_name: str, cm: CustomMigration, 
 
 async def _execute_migration_plan(plan: dict[str, Any], module: str, service: SqlalchemyService, state: dict):
     """
-    第二阶段：执行。
     根据迁移计划执行数据库操作，并在每一步成功后立即更新和保存状态。
     """
     # 按引擎分组
@@ -405,14 +393,7 @@ async def _execute_migration_plan(plan: dict[str, Any], module: str, service: Sq
 
                         apply_ops(upgrade_ops.ops)
                         return applied
-                    BATCH_OP_TYPES = (
-                        DropConstraintOp,
-                        CreateUniqueConstraintOp,
-                        AddConstraintOp,
-                        AlterColumnOp,
-                        DropColumnOp,
-                        CreateForeignKeyOp,
-                    )
+                    BATCH_OP_TYPES = (DropConstraintOp, CreateUniqueConstraintOp, AddConstraintOp, AlterColumnOp, DropColumnOp, CreateForeignKeyOp)  # noqa: E501
 
                     def iter_ops(ops_list):
                         for _op in ops_list:
@@ -459,7 +440,7 @@ async def _execute_migration_plan(plan: dict[str, Any], module: str, service: Sq
 
                 changed = await conn.run_sync(migrate)
                 if changed:
-                    logger.success(f"已迁移表{f'(bind={bind_key})' if bind_key else ''}: {', '.join(sorted(auto_tables))}")
+                    logger.success(f"已迁移表{f'(bind={bind_key})' if bind_key else ''}: {', '.join(sorted(auto_tables))}")  # noqa: E501
                     for t in auto_tables:
                         info = plan["model_info"][t]
                         _update_state_for_model(state, t, info, module)
@@ -498,11 +479,8 @@ async def run_migration_for(module: str, service: SqlalchemyService):
         return
 
     state = _load_state()
-
-    # 1. 生成计划
     plan = _plan_migrations(module, models, state)
 
-    # 2. 执行计划
     try:
         await _execute_migration_plan(plan, module, service, state)
     except Exception as e:

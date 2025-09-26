@@ -222,7 +222,7 @@ files = [
 
 [[package]]
 name = "arclet-entari"
-version = "0.16.1"
+version = "0.16.2"
 requires_python = ">=3.10"
 summary = "Simple IM Framework based on satori-python"
 groups = ["default", "dev"]
@@ -235,19 +235,19 @@ dependencies = [
     "satori-python-core>=0.17.0",
 ]
 files = [
-    {file = "arclet_entari-0.16.1-py3-none-any.whl", hash = "sha256:42ea46c354b2f1dd077ea10d1653a8ec6b27382955b989730858c97efd93ec1a"},
-    {file = "arclet_entari-0.16.1.tar.gz", hash = "sha256:e2c6642e69faceba894187d3033fb394f65a499c55f61532af936d475541269a"},
+    {file = "arclet_entari-0.16.2-py3-none-any.whl", hash = "sha256:3583461767600d7d61cef4aa152f6840f76b4d639104428e6af01f62d20cf25d"},
+    {file = "arclet_entari-0.16.2.tar.gz", hash = "sha256:79350c2bfca96becfa8a78c0eb519cffb0337b741f66eb5e0ceae73fd6b73638"},
 ]
 
 [[package]]
 name = "arclet-entari"
-version = "0.16.1"
+version = "0.16.2"
 extras = ["full"]
 requires_python = ">=3.10"
 summary = "Simple IM Framework based on satori-python"
 groups = ["dev"]
 dependencies = [
-    "arclet-entari==0.16.1",
+    "arclet-entari==0.16.2",
     "croniter>=5.0.1",
     "entari-cli>=0.1.0",
     "python-dotenv>=1.0.1",
@@ -255,8 +255,8 @@ dependencies = [
     "watchfiles>=1.0.3",
 ]
 files = [
-    {file = "arclet_entari-0.16.1-py3-none-any.whl", hash = "sha256:42ea46c354b2f1dd077ea10d1653a8ec6b27382955b989730858c97efd93ec1a"},
-    {file = "arclet_entari-0.16.1.tar.gz", hash = "sha256:e2c6642e69faceba894187d3033fb394f65a499c55f61532af936d475541269a"},
+    {file = "arclet_entari-0.16.2-py3-none-any.whl", hash = "sha256:3583461767600d7d61cef4aa152f6840f76b4d639104428e6af01f62d20cf25d"},
+    {file = "arclet_entari-0.16.2.tar.gz", hash = "sha256:79350c2bfca96becfa8a78c0eb519cffb0337b741f66eb5e0ceae73fd6b73638"},
 ]
 
 [[package]]

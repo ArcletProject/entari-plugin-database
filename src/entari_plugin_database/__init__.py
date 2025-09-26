@@ -1,20 +1,16 @@
 import asyncio
-import inspect
-from dataclasses import field
-from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import create_async_engine
 from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
 from arclet.letoderea.core import add_task
-from arclet.entari import BasicConfModel, plugin
+from arclet.entari import plugin
 from arclet.entari.config import config_model_validate
 from arclet.entari.event.config import ConfigReload
 from graia.amnesia.builtins.sqla import SqlalchemyService
 from graia.amnesia.builtins.sqla.model import register_callback, remove_callback
 from graia.amnesia.builtins.sqla.model import Base as Base
-from graia.amnesia.builtins.sqla.types import EngineOptions
-from sqlalchemy.engine.url import URL
+
 from sqlalchemy import select as select
 from sqlalchemy.ext import asyncio as sa_async
 from sqlalchemy.orm import Mapped as Mapped
@@ -24,51 +20,14 @@ from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
 from .utils import logger
 from .migration import _LOCK, _MODULE_MODELS, run_migration_for, register_custom_migration
-
-
-class UrlInfo(BasicConfModel):
-    type: str = "sqlite"
-    """数据库类型，默认为 sqlite"""
-    name: str = "data.db"
-    """数据库名称/文件路径"""
-    driver: str = "aiosqlite"
-    """数据库驱动，默认为 aiosqlite；其他类型的数据库驱动参考 SQLAlchemy 文档"""
-    host: str | None = None
-    """数据库主机地址。如果是 SQLite 数据库，此项可不填。"""
-    port: int | None = None
-    """数据库端口号。如果是 SQLite 数据库，此项可不填。"""
-    username: str | None = None
-    """数据库用户名。如果是 SQLite 数据库，此项可不填。"""
-    password: str | None = None
-    """数据库密码。如果是 SQLite 数据库，此项可不填。"""
-    query: dict[str, list[str] | str] = field(default_factory=dict)
-    """数据库连接参数，默认为空字典。可以传入如 `{"timeout": "30"}` 的参数。"""
-
-    @property
-    def url(self) -> URL:
-        if self.type == "sqlite":
-            return URL.create(f"{self.type}+{self.driver}", database=self.name, query=self.query)
-        return URL.create(
-            f"{self.type}+{self.driver}", self.username, self.password, self.host, self.port, self.name, self.query
-        )
-
-
-class Config(UrlInfo):
-    options: EngineOptions = field(default_factory=lambda: {"echo": None, "pool_pre_ping": True})
-    """数据库连接选项，默认为 `{"echo": None, "pool_pre_ping": True}`"""
-    session_options: dict[str, Any] | None = field(default=None)
-    """数据库会话选项，默认为 None。可以传入如 `{"expire_on_commit": False}` 的字典。"""
-    binds: dict[str, UrlInfo] = field(default_factory=dict)
-    """数据库绑定配置，默认为 None。可以传入如 `{"bind1": UrlInfo(...), "bind2": UrlInfo(...)}` 的字典。"""
-    create_table_at: Literal["preparing", "prepared", "blocking"] = "preparing"
-    """在指定阶段创建数据库表，默认为 'preparing'。可选值为 'preparing', 'prepared', 'blocking'。"""
+from .config import Config
 
 
 plugin.declare_static()
 plugin.metadata(
     "Database 服务",
     [{"name": "RF-Tar-Railt", "email": "rf_tar_railt@qq.com"}],
-    "0.1.1",
+    "0.2.0",
     description="基于 SQLAlchemy 的数据库服务插件",
     urls={
         "homepage": "https://github.com/ArcletProject/entari-plugin-database",
@@ -87,7 +46,7 @@ try:
     plugin.add_service(
         service := SqlalchemyService(
             _config.url,
-            _config.options,
+            _config.options,  # type: ignore
             _config.session_options,
             {key: value.url for key, value in _config.binds.items()},
             _config.create_table_at

@@ -1,2 +1,1 @@
-# entari-plugin-database
-Entari plugin for SQLAlchemy ORM
+./src/entari_plugin_database/README.md
