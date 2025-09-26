@@ -23,7 +23,7 @@ from sqlalchemy.orm import mapped_column as mapped_column
 from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
 from .utils import logger
-from .migration import _LOCK, _FILE_MODELS, run_migration_for, register_custom_migration
+from .migration import _LOCK, _MODULE_MODELS, run_migration_for, register_custom_migration
 
 
 class UrlInfo(BasicConfModel):
@@ -144,36 +144,31 @@ def _setup_tablename(cls: type[Base], kwargs: dict):
         cls.__tablename__ = f"{plg.id.replace('-', '_')}_{cls.__tablename__}"
 
 
-_PENDING_FILE_TASK: set[str] = set()
+_PENDING_MODEL_TASK: set[str] = set()
 
 
 def migration_callback(cls: type[Base], kwargs: dict):
     # 只有拥有 __tablename__ / __table__ 的实体才考虑
     if not (hasattr(cls, "__tablename__") or hasattr(cls, "__table__")):
         return
-    try:
-        source_file = inspect.getsourcefile(cls)
-    except Exception:
-        return
-    if not source_file:
-        return
+    module = cls.__module__
     with _LOCK:
-        _FILE_MODELS.setdefault(source_file, set()).add(cls)
+        _MODULE_MODELS.setdefault(module, set()).add(cls)
         # 避免同一文件重复并发执行, 使用一次性调度
-        if source_file in _PENDING_FILE_TASK:
+        if module in _PENDING_MODEL_TASK:
             return
-        _PENDING_FILE_TASK.add(source_file)
+        _PENDING_MODEL_TASK.add(module)
 
     async def _delayed():
         # 给同一文件内后续类定义一点时间注册
         await asyncio.sleep(0)  # 让出事件循环
         try:
-            await run_migration_for(source_file, service)
+            await run_migration_for(module, service)
         except Exception as e:
-            logger.exception(f"[Migration] 处理文件 {source_file} 失败: {e}", exc_info=e)
+            logger.exception(f"[Migration] 处理模块 {module} 失败: {e}", exc_info=e)
         finally:
             with _LOCK:
-                _PENDING_FILE_TASK.discard(source_file)
+                _PENDING_MODEL_TASK.discard(module)
 
     add_task(_delayed())
 
