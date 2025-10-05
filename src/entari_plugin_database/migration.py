@@ -129,7 +129,7 @@ def _get_table_structure(table: Table) -> dict[str, Any]:
     data = {
         "name": table.name,
         "metadata": repr(table.metadata),
-        "columns": [repr(col) for col in sorted(table.columns, key=lambda c: c.name)],
+        "columns": [repr(col) for col in sorted(table.columns, key=lambda c: c.name)],  # type: ignore
         "schema": ",".join([f"{k}={repr(getattr(table, k))}" for k in ["schema"]]),
     }
 
@@ -239,31 +239,70 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
     """
     model_info: dict[str, dict[str, Any]] = {}
     current_tables: set[str] = set()
-    target_tables: set[str] = set()  # 需要结构比对/自动迁移的表
 
     for m in models:
         table_obj = getattr(m, "__table__", None)
         if not isinstance(table_obj, Table):
             continue
-
         tablename = table_obj.name
-        revision = _model_revision(m)
-        entry = state.get(tablename, {})
-
-        if entry.get("revision") != revision:
-            target_tables.add(tablename)
-
         model_info[tablename] = {
             "model": m,
-            "revision": revision,
+            "revision": _model_revision(m),
             "table_obj": table_obj
         }
         current_tables.add(tablename)
 
-    # 识别需要删除的表
-    obsolete_tables = {
-        t for t, info in state.items() if info.get("module") == module and t not in current_tables
+    rename_plan: list[dict[str, Any]] = []
+
+    # 1. 识别当前模块中，状态文件有记录但代码中已不存在的表（潜在的旧表）
+    obsolete_info = {
+        t: info for t, info in state.items()
+        if info.get("module") == module and t not in current_tables and "name" in info
     }
+    # 2. 识别当前模块中，代码中存在但状态文件无记录的表（潜在的新表）
+    new_tables = {t for t in current_tables if t not in state}
+
+    # 3. 创建一个从 (模块, 模型名) 到旧表名的查找字典，用于快速匹配
+    obsolete_map = {
+        (info['module'], info['name']): t for t, info in obsolete_info.items()
+    }
+
+    # 4. 遍历新表，在旧表记录中寻找匹配项
+    for new_name in new_tables:
+        model = model_info[new_name]['model']
+        model_name = model.__name__
+        lookup_key = (module, model_name)
+
+        if lookup_key in obsolete_map:
+            # 找到了匹配项！确认为重命名操作
+            old_name = obsolete_map.pop(lookup_key)  # 从map中移除，防止一个旧表匹配多个新表
+            logger.debug(f"检测到表重命名 (基于模块与模型名): {old_name} -> {new_name}")
+            rename_plan.append({
+                "old_name": old_name,
+                "new_name": new_name,
+                "model_info": model_info[new_name]
+            })
+
+    # 5. 最终确定需要删除的表（未被匹配为重命名的旧表）
+    obsolete_tables = set(obsolete_map.values())
+
+    # 规划结构迁移（哪些表需要被alembic比对）
+    target_tables: set[str] = set()
+    for tablename, info in model_info.items():
+        revision = info["revision"]
+
+        # 检查是否是重命名后的新表
+        is_renamed_new = any(r['new_name'] == tablename for r in rename_plan)
+        if is_renamed_new:
+            # 如果是，用它对应的旧表状态来判断版本是否变更
+            old_name = next(r['old_name'] for r in rename_plan if r['new_name'] == tablename)
+            entry = state.get(old_name, {})
+        else:
+            # 否则，正常使用当前表名获取状态
+            entry = state.get(tablename, {})
+
+        if entry.get("revision") != revision:
+            target_tables.add(tablename)
 
     # 规划自定义脚本
     script_plan: dict[str, list[tuple[CustomMigration, str]]] = {}
@@ -271,7 +310,15 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
     for table, scripts in _CUSTOM_MIGRATIONS.items():
         if table not in current_tables:
             continue
-        entry = state.get(table) or {}
+
+        # 同样，为重命名的表加载旧状态以规划脚本
+        is_renamed = any(r['new_name'] == table for r in rename_plan)
+        if is_renamed:
+            old_name = next(r['old_name'] for r in rename_plan if r['new_name'] == table)
+            entry = state.get(old_name) or {}
+        else:
+            entry = state.get(table) or {}
+
         for cm in scripts:
             if cm.replace:
                 has_replacement.add(table)
@@ -286,6 +333,7 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
         "obsolete_tables": obsolete_tables,
         "script_plan": script_plan,
         "has_replacement": has_replacement,
+        "rename_plan": rename_plan,
     }
 
 
@@ -330,10 +378,47 @@ def _update_state_for_script(state: dict, table_name: str, cm: CustomMigration, 
         rec["current"] = cm.script_rev
 
 
+async def _execute_rename_and_update_state(rename_info: dict, service: SqlalchemyService, state: dict, module: str):
+    old_name = rename_info["old_name"]
+    new_name = rename_info["new_name"]
+    model_info = rename_info["model_info"]
+    bind_key = (state.get(old_name) or {}).get("bind_key", "")
+    if bind_key not in service.engines:
+        bind_key = ""
+    engine = service.engines.get(bind_key) or service.engines.get("")
+    if not engine:
+        logger.error(f"无法找到用于重命名表 {old_name} 的引擎，跳过。")
+        return
+    try:
+        async with engine.begin() as conn:
+            def do_rename(sync_conn):
+                mc = MigrationContext.configure(connection=sync_conn)
+                ops = Operations(mc)
+                ops.rename_table(old_name, new_name)
+            await conn.run_sync(do_rename)
+        logger.success(f"已重命名表{f'(bind={bind_key})' if bind_key else ''}: {old_name} -> {new_name}")
+        if old_name in state:
+            state[new_name] = state.pop(old_name)
+        _update_state_for_model(state, new_name, model_info, module)
+        _save_state(state)
+    except Exception as e:
+        logger.error(f"重命名表失败 {old_name} -> {new_name}: {e}")
+        raise
+
+
 async def _execute_migration_plan(plan: dict[str, Any], module: str, service: SqlalchemyService, state: dict):
     """
     根据迁移计划执行数据库操作，并在每一步成功后立即更新和保存状态。
     """
+    if plan["rename_plan"]:
+        for rename_info in plan["rename_plan"]:
+            old_name = rename_info['old_name']
+            new_name = rename_info['new_name']
+            if old_name in state:
+                state[new_name] = state[old_name].copy()
+    for rename_info in plan["rename_plan"]:
+        await _execute_rename_and_update_state(rename_info, service, state, module)
+
     # 按引擎分组
     tables_to_process = plan["target_tables"] | set(plan["script_plan"].keys())
     tables_by_engine: dict[str, set[str]] = {}
@@ -449,22 +534,36 @@ async def _execute_migration_plan(plan: dict[str, Any], module: str, service: Sq
 
     # 2. 删除表 (每删除一个表就保存一次状态)
     if plan["obsolete_tables"]:
-        default_engine = service.engines.get("")
-        if default_engine:
-            meta = MetaData()
-            async with default_engine.begin() as conn:
-                await conn.run_sync(meta.reflect, only=list(plan["obsolete_tables"]))
+        # 按 bind_key 分组待删除的表，优先使用 lock 中记录的 bind_key
+        obsolete_by_engine: dict[str, set[str]] = {}
+        for t_name in plan["obsolete_tables"]:
+            bind_key = (state.get(t_name, {}) or {}).get("bind_key", "")
+            if bind_key not in service.engines:
+                bind_key = ""
+            obsolete_by_engine.setdefault(bind_key, set()).add(t_name)
 
-            for t_name in plan["obsolete_tables"]:
+        for bind_key, tables in obsolete_by_engine.items():
+            engine = service.engines.get(bind_key) or service.engines.get("")
+            if engine is None:
+                logger.error(f"未找到引擎用于删表: bind_key={bind_key}, 跳过表: {tables}")
+                continue
+
+            meta = MetaData()
+            # 反射目标引擎上存在的这些表
+            async with engine.begin() as conn:
+                await conn.run_sync(meta.reflect, only=list(tables))
+
+            # 逐个删除（存在才删），成功后更新并保存状态
+            for t_name in sorted(tables):
                 if t_name in meta.tables:
                     try:
-                        async with default_engine.begin() as conn:
+                        async with engine.begin() as conn:
                             await conn.run_sync(meta.tables[t_name].drop, checkfirst=True)
-                        logger.success(f"已删除表: {t_name}")
+                        logger.success(f"已删除表{f'(bind={bind_key})' if bind_key else ''}: {t_name}")
                         state.pop(t_name, None)
-                        _save_state(state)  # 关键：每删除一个就保存
+                        _save_state(state)
                     except Exception as e:
-                        logger.error(f"删除表 {t_name} 失败: {e}")
+                        logger.error(f"删除表失败{f'(bind={bind_key})' if bind_key else ''}: {t_name}: {e}")
 
 
 async def run_migration_for(module: str, service: SqlalchemyService):
