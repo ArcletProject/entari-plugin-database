@@ -112,7 +112,7 @@ def migration_callback(cls: type[Base], kwargs: dict):
         return
     module = cls.__module__
     with _LOCK:
-        _MODULE_MODELS.setdefault(module, set()).add(cls)
+        _MODULE_MODELS.setdefault(module, {})[cls.__name__] = cls
         # 避免同一文件重复并发执行, 使用一次性调度
         if module in _PENDING_MODEL_TASK:
             return
@@ -120,7 +120,7 @@ def migration_callback(cls: type[Base], kwargs: dict):
 
     async def _delayed():
         # 给同一文件内后续类定义一点时间注册
-        await asyncio.sleep(0)  # 让出事件循环
+        await service.status.wait_for("blocking")
         try:
             await run_migration_for(module, service)
         except Exception as e:

@@ -27,7 +27,7 @@ from sqlalchemy.schema import Table
 from .utils import logger
 
 _STATE_FILE = local_data.get_data_file("database", "migrations_lock.json")
-_MODULE_MODELS: dict[str, set[type[Base]]] = {}
+_MODULE_MODELS: dict[str, dict[str, type[Base]]] = {}
 _LOCK = RLock()
 
 
@@ -116,11 +116,12 @@ def _load_state() -> dict[str, Any]:
 
 
 def _save_state(data: dict[str, Any]):
-    _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _STATE_FILE.with_suffix(".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
-    tmp.replace(_STATE_FILE)
+    with _LOCK:
+        _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _STATE_FILE.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
+        tmp.replace(_STATE_FILE)
 
 
 def _get_table_structure(table: Table) -> dict[str, Any]:
@@ -474,7 +475,8 @@ async def run_migration_for(module: str, service: SqlalchemyService):
     with _LOCK:
         if module not in _MODULE_MODELS:
             return
-        models = sorted(_MODULE_MODELS[module], key=lambda c: c.__name__)
+        models = list(_MODULE_MODELS[module].values())
+        models.sort(key=lambda c: c.__name__)
     if not models:
         return
 
