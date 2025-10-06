@@ -1,5 +1,3 @@
-import asyncio
-
 from sqlalchemy.ext.asyncio import create_async_engine
 from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
@@ -18,7 +16,7 @@ from sqlalchemy.orm import mapped_column as mapped_column
 
 from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
-from .utils import logger
+from .utils import CountSetitemDict, logger
 from .migration import _LOCK, _MODULE_MODELS, run_migration_for, register_custom_migration
 from .config import Config
 
@@ -107,12 +105,17 @@ _PENDING_MODEL_TASK: set[str] = set()
 
 
 def migration_callback(cls: type[Base], kwargs: dict):
-    # 只有拥有 __tablename__ / __table__ 的实体才考虑
-    if not (hasattr(cls, "__tablename__") or hasattr(cls, "__table__")):
-        return
     module = cls.__module__
     with _LOCK:
-        _MODULE_MODELS.setdefault(module, {})[cls.__name__] = cls
+        if module not in _MODULE_MODELS:
+            _MODULE_MODELS[module] = CountSetitemDict()
+            _MODULE_MODELS[module][cls.__name__] = cls
+        else:
+            # 若模型已存在且非表模型则跳过（避免重复注册）
+            record = _MODULE_MODELS[module]
+            if record.get_count(cls.__name__) > 0 and getattr(cls, "__table__", None) is None:
+                return
+            record[cls.__name__] = cls
         # 避免同一文件重复并发执行, 使用一次性调度
         if module in _PENDING_MODEL_TASK:
             return
@@ -134,7 +137,7 @@ def migration_callback(cls: type[Base], kwargs: dict):
 
 register_callback(_setup_tablename)
 register_callback(_clean_exist)
-register_callback(migration_callback)
+register_callback(migration_callback, after=True)
 plugin.collect_disposes(lambda: remove_callback(_clean_exist))
 plugin.collect_disposes(lambda: remove_callback(_setup_tablename))
 plugin.collect_disposes(lambda: remove_callback(migration_callback))

@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:5b89e5412f525af8ca4f91716bc295aa943292599f24c60640daf218c9ec1495"
+content_hash = "sha256:6c3fa06aa2a43ec8f833263a7292a931a588c99dead2fabdc0cbb893b42522ad"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -518,7 +518,7 @@ files = [
 
 [[package]]
 name = "graia-amnesia"
-version = "0.11.2"
+version = "0.11.4"
 requires_python = "<4.0,>=3.10"
 summary = "a collection of shared components for graia"
 groups = ["default", "dev"]
@@ -527,8 +527,8 @@ dependencies = [
     "typing-extensions>=4.0.0",
 ]
 files = [
-    {file = "graia_amnesia-0.11.2-py3-none-any.whl", hash = "sha256:7b631a81538e4d3992bf0edd25b9d914d83cb5a9ffe17e9aa46733da54e8717a"},
-    {file = "graia_amnesia-0.11.2.tar.gz", hash = "sha256:2b97f5e31d511e21809ea9333cd173a8f6a6de1032233526264a4a8c470ad1b5"},
+    {file = "graia_amnesia-0.11.4-py3-none-any.whl", hash = "sha256:3d45d35f459a9f99363e6e19c5c9548832057fca4367b63d58c79c4ff03d431d"},
+    {file = "graia_amnesia-0.11.4.tar.gz", hash = "sha256:7725d5ebe70d3ce973430c585df608254701e0ee840c5a5b9f7ceb252f4b47f4"},
 ]
 
 [[package]]

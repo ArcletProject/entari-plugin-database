@@ -24,10 +24,10 @@ from arclet.entari.localdata import local_data
 from sqlalchemy import MetaData
 from sqlalchemy.schema import Table
 
-from .utils import logger
+from .utils import CountSetitemDict, logger
 
 _STATE_FILE = local_data.get_data_file("database", "migrations_lock.json")
-_MODULE_MODELS: dict[str, dict[str, type[Base]]] = {}
+_MODULE_MODELS: dict[str, CountSetitemDict[str, type[Base]]] = {}
 _LOCK = RLock()
 
 
@@ -264,12 +264,12 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
 
     # 3. 创建一个从 (模块, 模型名) 到旧表名的查找字典，用于快速匹配
     obsolete_map = {
-        (info['module'], info['name']): t for t, info in obsolete_info.items()
+        (info["module"], info["name"]): t for t, info in obsolete_info.items()
     }
 
     # 4. 遍历新表，在旧表记录中寻找匹配项
     for new_name in new_tables:
-        model = model_info[new_name]['model']
+        model = model_info[new_name]["model"]
         model_name = model.__name__
         lookup_key = (module, model_name)
 
@@ -292,10 +292,10 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
         revision = info["revision"]
 
         # 检查是否是重命名后的新表
-        is_renamed_new = any(r['new_name'] == tablename for r in rename_plan)
+        is_renamed_new = any(r["new_name"] == tablename for r in rename_plan)
         if is_renamed_new:
             # 如果是，用它对应的旧表状态来判断版本是否变更
-            old_name = next(r['old_name'] for r in rename_plan if r['new_name'] == tablename)
+            old_name = next(r["old_name"] for r in rename_plan if r["new_name"] == tablename)
             entry = state.get(old_name, {})
         else:
             # 否则，正常使用当前表名获取状态
@@ -312,9 +312,9 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
             continue
 
         # 同样，为重命名的表加载旧状态以规划脚本
-        is_renamed = any(r['new_name'] == table for r in rename_plan)
+        is_renamed = any(r["new_name"] == table for r in rename_plan)
         if is_renamed:
-            old_name = next(r['old_name'] for r in rename_plan if r['new_name'] == table)
+            old_name = next(r["old_name"] for r in rename_plan if r["new_name"] == table)
             entry = state.get(old_name) or {}
         else:
             entry = state.get(table) or {}
@@ -412,8 +412,8 @@ async def _execute_migration_plan(plan: dict[str, Any], module: str, service: Sq
     """
     if plan["rename_plan"]:
         for rename_info in plan["rename_plan"]:
-            old_name = rename_info['old_name']
-            new_name = rename_info['new_name']
+            old_name = rename_info["old_name"]
+            new_name = rename_info["new_name"]
             if old_name in state:
                 state[new_name] = state[old_name].copy()
     for rename_info in plan["rename_plan"]:
