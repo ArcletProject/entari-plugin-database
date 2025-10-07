@@ -1,6 +1,6 @@
 [project]
 name = "entari-plugin-database"
-version = "0.2.0"
+version = "0.2.1"
 description = "Entari plugin for SQLAlchemy ORM"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},

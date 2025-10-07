@@ -25,7 +25,7 @@ plugin.declare_static()
 plugin.metadata(
     "Database 服务",
     [{"name": "RF-Tar-Railt", "email": "rf_tar_railt@qq.com"}],
-    "0.2.0",
+    "0.2.1",
     description="基于 SQLAlchemy 的数据库服务插件",
     urls={
         "homepage": "https://github.com/ArcletProject/entari-plugin-database",
