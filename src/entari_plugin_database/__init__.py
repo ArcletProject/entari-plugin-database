@@ -11,13 +11,13 @@ from graia.amnesia.builtins.sqla.model import Base as Base
 
 from sqlalchemy import select as select
 from sqlalchemy.ext import asyncio as sa_async
-from sqlalchemy.orm import Mapped as Mapped
+from sqlalchemy.orm import Mapped as Mapped, instrumentation
 from sqlalchemy.orm import mapped_column as mapped_column
 
 from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
-from .utils import CountSetitemDict, logger
-from .migration import _LOCK, _MODULE_MODELS, run_migration_for, register_custom_migration
+from .utils import logger
+from .migration import run_migration, register_custom_migration
 from .config import Config
 
 
@@ -82,9 +82,20 @@ async def reload_config(event: ConfigReload, serv: SqlalchemyService):
 
 
 def _clean_exist(cls: type[Base], kwargs: dict):
-    if cls.__tablename__ in Base.metadata.tables:
-        cls.registry.dispose()
-        dict.pop(Base.metadata.tables, cls.__tablename__, None)
+    existing_table = Base.metadata.tables.get(cls.__tablename__)
+    if existing_table is None:
+        return
+    Base.metadata.remove(existing_table)
+    for manager, _ in Base.registry._managers.items():
+        class_ = manager.class_
+        if repr(class_) == repr(cls) and class_ is not cls:
+            # 清理已失效的类定义
+            if "mapper" in manager.__dict__ and manager.mapper is not None:
+                manager.mapper._set_dispose_flags()
+            Base.registry._dispose_cls(class_)
+            instrumentation._instrumentation_factory.unregister(class_)
+            Base.registry._managers.pop(manager, None)
+            break
 
 
 def _setup_tablename(cls: type[Base], kwargs: dict):
@@ -101,38 +112,24 @@ def _setup_tablename(cls: type[Base], kwargs: dict):
         cls.__tablename__ = f"{plg.id.replace('-', '_')}_{cls.__tablename__}"
 
 
-_PENDING_MODEL_TASK: set[str] = set()
+_PENDING_TASKS = set()
 
 
 def migration_callback(cls: type[Base], kwargs: dict):
-    module = cls.__module__
-    with _LOCK:
-        if module not in _MODULE_MODELS:
-            _MODULE_MODELS[module] = CountSetitemDict()
-            _MODULE_MODELS[module][cls.__name__] = cls
-        else:
-            # 若模型已存在且非表模型则跳过（避免重复注册）
-            record = _MODULE_MODELS[module]
-            if record.get_count(cls.__name__) > 0 and getattr(cls, "__table__", None) is None:
-                return
-            record[cls.__name__] = cls
-        # 避免同一文件重复并发执行, 使用一次性调度
-        if module in _PENDING_MODEL_TASK:
-            return
-        _PENDING_MODEL_TASK.add(module)
+    if _PENDING_TASKS:
+        return
 
     async def _delayed():
         # 给同一文件内后续类定义一点时间注册
         await service.status.wait_for("blocking")
         try:
-            await run_migration_for(module, service)
+            await run_migration(service)
         except Exception as e:
-            logger.exception(f"[Migration] 处理模块 {module} 失败: {e}", exc_info=e)
-        finally:
-            with _LOCK:
-                _PENDING_MODEL_TASK.discard(module)
+            logger.exception(f"[Migration] 迁移失败: {e}", exc_info=e)
 
-    add_task(_delayed())
+    task = add_task(_delayed())
+    _PENDING_TASKS.add(task)
+    task.add_done_callback(_PENDING_TASKS.discard)
 
 
 register_callback(_setup_tablename)
@@ -161,3 +158,5 @@ __all__ = [
     "SqlalchemyService",
     "register_custom_migration",
 ]
+
+# logger.disable("alembic.runtime.migration")

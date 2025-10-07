@@ -20,14 +20,14 @@ from alembic.operations.ops import (
 
 from graia.amnesia.builtins.sqla.model import Base
 from graia.amnesia.builtins.sqla.service import SqlalchemyService
+from graia.amnesia.builtins.utils import get_subclasses
 from arclet.entari.localdata import local_data
-from sqlalchemy import MetaData
+from sqlalchemy import MetaData, PrimaryKeyConstraint, UniqueConstraint, ForeignKeyConstraint, CheckConstraint
 from sqlalchemy.schema import Table
 
-from .utils import CountSetitemDict, logger
+from .utils import logger
 
 _STATE_FILE = local_data.get_data_file("database", "migrations_lock.json")
-_MODULE_MODELS: dict[str, CountSetitemDict[str, type[Base]]] = {}
 _LOCK = RLock()
 
 
@@ -136,7 +136,19 @@ def _get_table_structure(table: Table) -> dict[str, Any]:
     # 序列化约束
     consts = list(table.constraints)
     consts.sort(key=lambda c: c.name if isinstance(c.name, str) else "")
-    data["constraints"] = [repr(c) for c in consts]
+    data["constraints"] = []
+    for const in consts:
+        const_info = {"type": const.__class__.__name__, "name": const.name}
+        if isinstance(const, (PrimaryKeyConstraint, UniqueConstraint)):
+            const_info["columns"] = sorted([c.name for c in const.columns])
+        elif isinstance(const, ForeignKeyConstraint):
+            const_info["columns"] = sorted([c.name for c in const.columns])
+            const_info["target"] = f"{const.elements[0].target_fullname}"
+            const_info["ondelete"] = const.ondelete
+            const_info["onupdate"] = const.onupdate
+        elif isinstance(const, CheckConstraint):
+            const_info["sqltext"] = str(const.sqltext)
+        data["constraints"].append(const_info)
 
     # 序列化索引
     indexes = list(table.indexes)
@@ -154,7 +166,20 @@ def _compute_structure_hash(table: Table) -> str:
     return hashlib.md5(canonical_str.encode("utf-8")).hexdigest()
 
 
-def _model_revision(model: type[Base]) -> str:
+def _resolve_model_table(model: type[Base]) -> Table | None:
+    """找出模型对应的 Table（若存在则优先使用模型上的 __table__）。"""
+    table_obj = getattr(model, "__table__", None)
+    if isinstance(table_obj, Table):
+        return table_obj
+
+    tablename = getattr(model, "__tablename__", None)
+    if not tablename:
+        return None
+
+    return Base.metadata.tables.get(tablename)
+
+
+def _model_revision(model: type[Base], table: Table) -> str:
     """
     生成模型的修订版本号。
     优先使用模型中自定义的 __revision__。
@@ -163,11 +188,6 @@ def _model_revision(model: type[Base]) -> str:
     custom_rev = getattr(model, "__revision__", None)
     if custom_rev:
         return str(custom_rev)
-
-    table = getattr(model, "__table__", None)
-    if not isinstance(table, Table):
-        raise ValueError(f"无法从模型 {model.__name__} 中获取有效的 Table 对象")
-
     return _compute_structure_hash(table)
 
 
@@ -241,13 +261,17 @@ def _plan_migrations(module: str, models: list[type[Base]], state: dict) -> dict
     current_tables: set[str] = set()
 
     for m in models:
-        table_obj = getattr(m, "__table__", None)
-        if not isinstance(table_obj, Table):
+        table_obj = _resolve_model_table(m)
+        if table_obj is None:
+            logger.warning(
+                f"[Migration] 跳过模型 {m.__module__}:{m.__name__}: 未能找到已定义的 Table。",
+            )
             continue
+
         tablename = table_obj.name
         model_info[tablename] = {
             "model": m,
-            "revision": _model_revision(m),
+            "revision": _model_revision(m, table_obj),
             "table_obj": table_obj
         }
         current_tables.add(tablename)
@@ -566,31 +590,29 @@ async def _execute_migration_plan(plan: dict[str, Any], module: str, service: Sq
                         logger.error(f"删除表失败{f'(bind={bind_key})' if bind_key else ''}: {t_name}: {e}")
 
 
-async def run_migration_for(module: str, service: SqlalchemyService):
+async def run_migration(service: SqlalchemyService):
     """
-    针对某个源码文件生成并执行迁移。
+    对所有模型，生成并执行迁移。
     重构后的主流程：规划 -> 执行 -> 增量式状态更新。
     """
-    with _LOCK:
-        if module not in _MODULE_MODELS:
-            return
-        models = list(_MODULE_MODELS[module].values())
-        models.sort(key=lambda c: c.__name__)
-    if not models:
-        return
-
+    all_models = [*get_subclasses(Base)]
+    grouped_models: dict[str, list[type[Base]]] = {}
+    for m in all_models:
+        grouped_models.setdefault(m.__module__, []).append(m)
     state = _load_state()
-    plan = _plan_migrations(module, models, state)
 
-    try:
-        await _execute_migration_plan(plan, module, service, state)
-    except Exception as e:
-        logger.exception(f"模块 {module} 的迁移过程发生未处理的异常: {e}")
-    is_state_dirty = False
-    for t, info in plan["model_info"].items():
-        if state.get(t, {}).get("revision") != info["revision"]:
-            _update_state_for_model(state, t, info, module)
-            is_state_dirty = True
-    if is_state_dirty:
-        _save_state(state)
+    for module, models in grouped_models.items():
+        plan = _plan_migrations(module, models, state)
+
+        try:
+            await _execute_migration_plan(plan, module, service, state)
+        except Exception as e:
+            logger.exception(f"模块 {module} 的迁移过程发生未处理的异常: {e}")
+        is_state_dirty = False
+        for t, info in plan["model_info"].items():
+            if state.get(t, {}).get("revision") != info["revision"]:
+                _update_state_for_model(state, t, info, module)
+                is_state_dirty = True
+        if is_state_dirty:
+            _save_state(state)
     return
