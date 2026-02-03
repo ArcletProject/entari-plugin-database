@@ -28,7 +28,11 @@ class DatabasePropagator(Propagator):
         params = subscriber.params
         if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
             return True
-        if any(isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider)) for p in params for prod in p.providers):  # noqa: E501,UP038
+        if any(
+            isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider))
+            for p in params
+            for prod in p.providers
+        ):  # noqa: E501,UP038
             return True
         return False
 
@@ -158,11 +162,11 @@ PATTERNS = {
 
 class SQLDepend(Depend):
     def __init__(self, statement: ExecutableReturnsRows, option: Option = Option(), cache: bool = False):
-        super().__init__(lambda : None, cache)
+        super().__init__(lambda: None, cache)
         self.statement = statement
         self.option = option
 
-        async def target(db_session: sa_async.AsyncSession,  **params):
+        async def target(db_session: sa_async.AsyncSession, **params):
             if self.option.stream:
                 result = await db_session.stream(self.statement, params)
             else:
@@ -236,11 +240,7 @@ class ORMProviderFactory(ProviderFactory):
         for index, model in enumerate(models):
             if origin_is_union(get_origin(model)):
                 models[index] = next(
-                    (
-                        arg
-                        for arg in get_args(model)
-                        if isclass(arg) and issubclass(arg, Base)
-                    ),
+                    (arg for arg in get_args(model) if isclass(arg) and issubclass(arg, Base)),
                     None,
                 )
 

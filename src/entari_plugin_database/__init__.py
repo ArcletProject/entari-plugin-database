@@ -47,7 +47,7 @@ try:
             _config.options,  # type: ignore
             _config.session_options,
             {key: value.url for key, value in _config.binds.items()},
-            _config.create_table_at
+            _config.create_table_at,
         )
     )
 except Exception as e:
