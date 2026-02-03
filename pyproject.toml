@@ -1,6 +1,6 @@
 [project]
 name = "entari-plugin-database"
-version = "0.2.1"
+version = "0.2.2"
 description = "Entari plugin for SQLAlchemy ORM"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
@@ -10,9 +10,9 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "graia-amnesia>=0.11.4",
     "tarina<0.8.0,>=0.7.1",
-    "arclet-entari<0.17.0,>=0.16.2",
     "arclet-letoderea>=0.19.5",
     "alembic>=1.16.5",
+    "arclet-entari<0.18.0,>=0.17.0rc1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
