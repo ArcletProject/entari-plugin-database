@@ -637,7 +637,7 @@ def _group_tables_by_engine(
 
     for t in tables_to_process:
         table_obj = plan.model_info.get(t, {}).get("table_obj")
-        bind_key = table_obj.info.get("bind_key", "") if table_obj else _DEFAULT_BIND_KEY
+        bind_key = table_obj.info.get("bind_key", "") if table_obj is not None else _DEFAULT_BIND_KEY
         effective_key = bind_key if bind_key in service.engines else _DEFAULT_BIND_KEY
         tables_by_engine.setdefault(effective_key, set()).add(t)
 
