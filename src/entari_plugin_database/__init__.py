@@ -25,12 +25,13 @@ plugin.declare_static()
 plugin.metadata(
     "Database 服务",
     [{"name": "RF-Tar-Railt", "email": "rf_tar_railt@qq.com"}],
-    "0.2.3",
+    "0.2.4",
     description="基于 SQLAlchemy 的数据库服务插件",
     urls={
         "homepage": "https://github.com/ArcletProject/entari-plugin-database",
     },
     config=Config,
+    readme="README.md",
 )
 plugin.collect_disposes(
     lambda: global_propagators.remove(db_supplier),
