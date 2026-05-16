@@ -20,32 +20,8 @@ from arclet.letoderea import Propagator, Contexts, STACK, Provider, ProviderFact
 from arclet.letoderea.ref import Deref, generate
 from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
+from arclet.entari.plugin.model import Plugin
 from sqlalchemy.ext import asyncio as sa_async
-
-
-class DatabasePropagator(Propagator):
-    def validate(self, subscriber: Subscriber):
-        params = subscriber.params
-        if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
-            return True
-        if any(
-            isinstance(prod, (SessionProvider, ORMProviderFactory._ModelProvider))
-            for p in params
-            for prod in p.providers
-        ):  # noqa: E501,UP038
-            return True
-        return False
-
-    async def supply(self, ctx: Contexts, serv: SqlalchemyService | None = None):
-        if serv is None:
-            return
-        session = serv.get_session()
-        stack = ctx[STACK]
-        session = await stack.enter_async_context(session)
-        return {"$db_session": session}
-
-    def compose(self):
-        yield self.supply, True, 20
 
 
 class SessionProvider(Provider[sa_async.AsyncSession]):
@@ -62,6 +38,36 @@ class SessionProvider(Provider[sa_async.AsyncSession]):
             return sess
         except ValueError:
             return
+
+
+class DatabasePropagator(Propagator):
+    def validate(self, subscriber: Subscriber):
+        params = subscriber.params
+        if any((p.depend and isinstance(p.depend, SQLDepend)) for p in params):
+            return True
+        if any(isinstance(p.annotation, sa_async.AsyncSession) for p in params):
+            return True
+        if any(
+            isinstance(prod, ORMProviderFactory._ModelProvider)
+            for p in params
+            for prod in p.providers
+        ):  # noqa: E501,UP038
+            return True
+        return False
+
+    def providers(self):
+        return [SessionProvider()]
+
+    async def supply(self, ctx: Contexts, serv: SqlalchemyService | None = None):
+        if serv is None:
+            return
+        session = serv.get_session()
+        stack = ctx[STACK]
+        session = await stack.enter_async_context(session)
+        return {"$db_session": session}
+
+    def compose(self):
+        yield self.supply, True, 20
 
 
 @dataclass(unsafe_hash=True)
@@ -254,6 +260,14 @@ class ORMProviderFactory(ProviderFactory):
         return self._ModelProvider(statement, option)
 
 
-global_propagators.append(db_supplier := DatabasePropagator())
-global_providers.append(sess_provider := SessionProvider())
-global_providers.append(orm_factory := ORMProviderFactory())
+plg = Plugin.current()
+
+
+def _provides():
+    global_propagators.append(db_supplier := DatabasePropagator())
+    global_providers.append(orm_factory := ORMProviderFactory())
+    yield lambda: global_propagators.remove(db_supplier)
+    yield lambda: global_providers.remove(orm_factory)
+
+
+plg.effect(_provides, "database providers")

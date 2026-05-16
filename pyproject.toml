@@ -12,7 +12,7 @@ dependencies = [
     "tarina<0.8.0,>=0.7.1",
     "arclet-letoderea>=0.19.5",
     "alembic>=1.16.5",
-    "arclet-entari<0.18.0,>=0.17.0",
+    "arclet-entari<0.19.0,>=0.18.0rc1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -26,11 +26,6 @@ build-backend = "pdm.backend"
 [tool.pdm]
 distribution = true
 
-[tool.pdm.dev-dependencies]
-dev = [
-    "arclet-entari[full]>=0.17.0",
-]
-
 [tool.ruff]
 line-length = 120
 target-version = "py310"
@@ -39,3 +34,13 @@ include = ["src/**.py"]
 [tool.ruff.lint]
 select = ["E", "W", "F", "UP", "C", "T", "PYI", "PT", "Q"]
 ignore = ["C901", "T201", "E731", "E402", "PYI055", "UP038"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "basic"
+
+[dependency-groups]
+dev = [
+    "arclet-entari[full]>=0.17.0",
+]

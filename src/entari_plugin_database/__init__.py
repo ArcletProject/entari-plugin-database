@@ -1,8 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine
-from arclet.letoderea.provider import global_providers
-from arclet.letoderea.scope import global_propagators
-from arclet.letoderea.core import add_task
-from arclet.entari import plugin
+from arclet.letoderea.utils import add_task
+from arclet.entari import Plugin, plugin
 from arclet.entari.config import config_model_validate
 from arclet.entari.event.config import ConfigReload
 from graia.amnesia.builtins.sqla import SqlalchemyService
@@ -14,7 +12,6 @@ from sqlalchemy.ext import asyncio as sa_async
 from sqlalchemy.orm import Mapped as Mapped, instrumentation
 from sqlalchemy.orm import mapped_column as mapped_column
 
-from .param import db_supplier, sess_provider, orm_factory
 from .param import SQLDepends as SQLDepends
 from .utils import logger
 from .migration import run_migration, register_custom_migration
@@ -32,11 +29,6 @@ plugin.metadata(
     },
     config=Config,
     readme="README.md",
-)
-plugin.collect_disposes(
-    lambda: global_propagators.remove(db_supplier),
-    lambda: global_providers.remove(sess_provider),
-    lambda: global_providers.remove(orm_factory),
 )
 
 _config = plugin.get_config(Config)
@@ -133,12 +125,17 @@ def migration_callback(cls: type[Base], kwargs: dict):
     task.add_done_callback(_PENDING_TASKS.discard)
 
 
-register_callback(_setup_tablename)
-register_callback(_clean_exist)
-register_callback(migration_callback, after=True)
-plugin.collect_disposes(lambda: remove_callback(_clean_exist))
-plugin.collect_disposes(lambda: remove_callback(_setup_tablename))
-plugin.collect_disposes(lambda: remove_callback(migration_callback))
+def _register_callbacks():
+    register_callback(_setup_tablename)
+    register_callback(_clean_exist)
+    register_callback(migration_callback, after=True)
+    yield lambda: remove_callback(_clean_exist)
+    yield lambda: remove_callback(_setup_tablename)
+    yield lambda: remove_callback(migration_callback)
+
+
+plg = Plugin.current()
+plg.effect(_register_callbacks, "database model callbacks")
 
 
 BaseOrm = Base
