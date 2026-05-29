@@ -47,11 +47,7 @@ class DatabasePropagator(Propagator):
             return True
         if any(isinstance(p.annotation, sa_async.AsyncSession) for p in params):
             return True
-        if any(
-            isinstance(prod, ORMProviderFactory._ModelProvider)
-            for p in params
-            for prod in p.providers
-        ):  # noqa: E501,UP038
+        if any(isinstance(prod, ORMProviderFactory._ModelProvider) for p in params for prod in p.providers):  # noqa: E501,UP038
             return True
         return False
 

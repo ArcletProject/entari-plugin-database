@@ -31,7 +31,10 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     MetaData,
     PrimaryKeyConstraint,
-    UniqueConstraint, Column, DefaultClause, TextClause,
+    UniqueConstraint,
+    Column,
+    DefaultClause,
+    TextClause,
 )
 from sqlalchemy.schema import Table
 
@@ -222,19 +225,17 @@ def _serialize_column(column: Column[Any]) -> str:
             kwargs["server_default"] = repr(column.server_default)
     if column.comment:
         kwargs["comment"] = repr(column.comment)
-    ans = "Column(%s)" % ", ".join(
-        [repr(column.name)]
-        + [repr(column.type)]
-        + [repr(x) for x in column.foreign_keys if x is not None]
-        + [repr(_serialize_constraint(x)) for x in column.constraints]
-        + [
-            (
-                column.table is not None
-                and "table=<%s>" % column.table.description
-                or "table=None"
-            )
-        ]
-        + [f"{k}={v}" for k, v in kwargs.items()]
+    ans = (
+        "Column("
+        + ", ".join(
+            [repr(column.name)]
+            + [repr(column.type)]
+            + [repr(x) for x in column.foreign_keys if x is not None]
+            + [repr(_serialize_constraint(x)) for x in column.constraints]
+            + [f"table={repr(column.table.description) if column.table is not None else 'None'}"]
+            + [f"{k}={v}" for k, v in kwargs.items()]
+        )
+        + ")"
     )
     return re.sub(
         r"\s*at\s*0x[0-9a-fA-F]+",
