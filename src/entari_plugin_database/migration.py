@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import hashlib
 import json
 from collections.abc import Callable, Iterable
@@ -30,7 +31,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     MetaData,
     PrimaryKeyConstraint,
-    UniqueConstraint,
+    UniqueConstraint, Column, DefaultClause, TextClause,
 )
 from sqlalchemy.schema import Table
 
@@ -202,6 +203,46 @@ def _serialize_constraint(const: Any) -> dict[str, Any]:
     return const_info
 
 
+def _serialize_column(column: Column[Any]) -> str:
+    kwargs = {}
+    if column.key != column.name:
+        kwargs["key"] = repr(column.key)
+    if column.primary_key:
+        kwargs["primary_key"] = repr(column.primary_key)
+    if not column.nullable:
+        kwargs["nullable"] = repr(column.nullable)
+    if column.onupdate:
+        kwargs["onupdate"] = repr(column.onupdate)
+    if column.default:
+        kwargs["default"] = repr(column.default)
+    if column.server_default:
+        if isinstance(column.server_default, DefaultClause) and isinstance(column.server_default.arg, TextClause):
+            kwargs["server_default"] = f"text({column.server_default.arg.text!r})"
+        else:
+            kwargs["server_default"] = repr(column.server_default)
+    if column.comment:
+        kwargs["comment"] = repr(column.comment)
+    ans = "Column(%s)" % ", ".join(
+        [repr(column.name)]
+        + [repr(column.type)]
+        + [repr(x) for x in column.foreign_keys if x is not None]
+        + [repr(_serialize_constraint(x)) for x in column.constraints]
+        + [
+            (
+                column.table is not None
+                and "table=<%s>" % column.table.description
+                or "table=None"
+            )
+        ]
+        + [f"{k}={v}" for k, v in kwargs.items()]
+    )
+    return re.sub(
+        r"\s*at\s*0x[0-9a-fA-F]+",
+        "",
+        ans,
+    )
+
+
 def _get_table_structure(table: Table) -> dict[str, Any]:
     """将 SQLAlchemy Table 对象序列化为字典，用于后续哈希计算。"""
     # 按名称排序约束和索引以确保稳定性
@@ -214,8 +255,8 @@ def _get_table_structure(table: Table) -> dict[str, Any]:
     return {
         "name": table.name,
         "metadata": repr(table.metadata),
-        "columns": [repr(col) for col in sorted(table.columns, key=lambda c: c.name)],
-        "schema": f"schema={table.schema!r}",
+        "columns": [_serialize_column(col) for col in sorted(table.columns, key=lambda c: c.name)],
+        "schema": f"{table.schema!r}",
         "constraints": [_serialize_constraint(c) for c in sorted_constraints],
         "indexes": [repr(i) for i in sorted_indexes],
     }
@@ -267,6 +308,29 @@ def _include_tables_factory(target_tables: set[str]) -> Callable[[Any, str, str,
         return table_name in target_tables
 
     return include
+
+
+def _unwrap_default_clause(value: Any) -> Any:
+    """将 SQLAlchemy DefaultClause 还原为 Alembic/SQLAlchemy 期望的原始默认值。"""
+    if isinstance(value, DefaultClause):
+        return value.arg
+    return value
+
+
+def _normalize_alembic_ops(ops_list: Iterable[Any]) -> list[Any]:
+    """在执行前归一化 Alembic 操作对象，修复 server_default 类型不兼容问题。"""
+    normalized: list[Any] = []
+
+    for op in ops_list:
+        if isinstance(op, alembic_ops.ModifyTableOps):
+            op.ops = _normalize_alembic_ops(op.ops)
+        elif isinstance(op, AlterColumnOp):
+            op.modify_server_default = _unwrap_default_clause(op.modify_server_default)
+            op.existing_server_default = _unwrap_default_clause(op.existing_server_default)
+
+        normalized.append(op)
+
+    return normalized
 
 
 def _execute_script(
@@ -722,6 +786,7 @@ async def _execute_auto_migration(
 def _apply_ops_direct(op_runner: Operations, ops_list: Iterable[Any]) -> bool:
     """直接应用迁移操作（非 SQLite）。"""
     applied = False
+    ops_list = _normalize_alembic_ops(ops_list)
 
     def apply(ops: Iterable[Any]) -> None:
         nonlocal applied
@@ -742,6 +807,7 @@ def _apply_ops_sqlite_batch(
     target_tables: set[str],
 ) -> bool:
     """使用 batch 模式应用迁移操作（SQLite）。"""
+    ops_list = _normalize_alembic_ops(ops_list)
 
     def iter_ops(ops: Iterable[Any]):
         for op in ops:
