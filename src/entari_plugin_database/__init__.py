@@ -1,3 +1,4 @@
+from arclet.entari.plugin import PluginRole
 from sqlalchemy.ext.asyncio import create_async_engine
 from arclet.letoderea.utils import add_task
 from arclet.entari import Plugin, plugin
@@ -21,8 +22,9 @@ from .config import Config
 plugin.declare_static()
 plugin.metadata(
     "Database 服务",
+    PluginRole.LIBRARY,
     [{"name": "RF-Tar-Railt", "email": "rf_tar_railt@qq.com"}],
-    "0.3.1",
+    "0.3.2",
     description="基于 SQLAlchemy 的数据库服务插件",
     urls={
         "homepage": "https://github.com/ArcletProject/entari-plugin-database",
