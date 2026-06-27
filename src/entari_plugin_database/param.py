@@ -7,7 +7,6 @@ from collections.abc import Iterator, Sequence, AsyncIterator
 from sqlalchemy import Row, Result, ScalarResult, select
 from sqlalchemy.ext.asyncio import AsyncResult, AsyncScalarResult
 from sqlalchemy.sql.selectable import ExecutableReturnsRows
-from tarina import generic_issubclass
 from tarina.generic import origin_is_union, isclass
 from typing_extensions import Any
 from typing import cast, get_args, get_origin
@@ -22,6 +21,8 @@ from arclet.letoderea.provider import global_providers
 from arclet.letoderea.scope import global_propagators
 from arclet.entari.plugin.model import Plugin
 from sqlalchemy.ext import asyncio as sa_async
+
+from .utils import generic_issubclass
 
 
 class SessionProvider(Provider[sa_async.AsyncSession]):
@@ -204,7 +205,7 @@ def SQLDepends(statement: ExecutableReturnsRows, option: Option = Option(), cach
 
 
 class ORMProviderFactory(ProviderFactory):
-    priority = 10
+    priority = 20
 
     class _ModelProvider(Provider[Any]):
         def __init__(self, statement: ExecutableReturnsRows, option: Option):
@@ -231,8 +232,10 @@ class ORMProviderFactory(ProviderFactory):
             return result
 
     def validate(self, param: Param):
+        if param.providers:  # skip if already has providers
+            return
         for pattern, option in PATTERNS.items():
-            if models := cast("list[Any]", generic_issubclass(pattern, param.annotation, list_=True)):
+            if models := cast("list[Any]", generic_issubclass(pattern, param.annotation)):
                 break
         else:
             models, option = [], Option()
