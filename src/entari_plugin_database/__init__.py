@@ -1,4 +1,5 @@
 from arclet.entari.plugin import PluginRole
+from arclet.entari.plugin.service import plugin_service
 from sqlalchemy.ext.asyncio import create_async_engine
 from arclet.letoderea.utils import add_task
 from arclet.entari import Plugin, plugin
@@ -104,7 +105,11 @@ def _setup_tablename(cls: type[Base], kwargs: dict):
     cls.__tablename__ = cls.__name__.lower()
 
     if plg := plugin.get_plugin(3):
-        cls.__tablename__ = f"{plg.id.replace('-', '_')}_{cls.__tablename__}"
+        _plugin_id = plg.id
+        while _plugin_id in plugin_service._subplugined:
+            _plugin_id = plugin_service._subplugined[_plugin_id]
+            if plg1 := plugin.find_plugin(_plugin_id):
+                cls.__tablename__ = f"{plg1.id.replace('-', '_').replace('.', '_')}_{cls.__tablename__}"
 
 
 _PENDING_TASKS = set()

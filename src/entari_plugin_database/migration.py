@@ -281,8 +281,8 @@ def _resolve_model_table(model: type[Base]) -> Table | None:
         return table_obj
 
     # 回退到 metadata.tables 查找
-    tablename = getattr(model, "__tablename__", None)
-    return Base.metadata.tables.get(tablename) if tablename else None
+    if tablename := getattr(model, "__tablename__", None):
+        return Base.metadata.tables.get(tablename)
 
 
 def _model_revision(model: type[Base], table: Table) -> str:
