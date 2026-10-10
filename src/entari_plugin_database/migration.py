@@ -35,6 +35,7 @@ from sqlalchemy import (
     Column,
     DefaultClause,
     TextClause,
+    text,
 )
 from sqlalchemy.schema import Table
 
@@ -643,15 +644,57 @@ async def _execute_rename_and_update_state(
 
     try:
         async with engine.begin() as conn:
+            # 检查目标表是否已存在（通常由 create_all 创建）
+            def check_tables(sync_conn: Connection) -> tuple[bool, bool]:
+                meta = MetaData()
+                meta.reflect(bind=sync_conn, only=[old_name, new_name])
+                old_exists = old_name in meta.tables
+                new_exists = new_name in meta.tables
+                return old_exists, new_exists
 
-            def do_rename(sync_conn: Connection) -> None:
-                mc = MigrationContext.configure(connection=sync_conn)
-                Operations(mc).rename_table(old_name, new_name)
+            old_exists, new_exists = await conn.run_sync(check_tables)
 
-            await conn.run_sync(do_rename)
+            # 如果新表已存在（由 create_all 创建），需要将旧表数据迁移过来
+            if new_exists:
+                if old_exists:
+                    # 迁移数据：将旧表的所有数据复制到新表
+                    def do_migrate_and_drop(sync_conn: Connection) -> None:
+                        # 获取旧表的列信息
+                        meta = MetaData()
+                        meta.reflect(bind=sync_conn, only=[old_name, new_name])
+                        old_table = meta.tables[old_name]
+                        new_table = meta.tables[new_name]
+                        
+                        # 找出两个表的公共列
+                        old_cols = {col.name for col in old_table.columns}
+                        new_cols = {col.name for col in new_table.columns}
+                        common_cols = old_cols & new_cols
+                        
+                        if common_cols:
+                            # 构建 INSERT INTO ... SELECT ... 语句
+                            col_list = ", ".join(f'"{col}"' for col in sorted(common_cols))
+                            insert_sql = f"INSERT INTO {new_name} ({col_list}) SELECT {col_list} FROM `{old_name}`"
+                            sync_conn.execute(text(insert_sql))
+                            logger.info(f"已复制数据从 {old_name} 到 {new_name}，涉及列: {', '.join(sorted(common_cols))}")
+                        
+                        # 删除旧表
+                        mc = MigrationContext.configure(connection=sync_conn)
+                        Operations(mc).drop_table(old_name)
 
-        suffix = _format_bind_suffix(bind_key if bind_key in service.engines else "")
-        logger.success(f"已重命名表{suffix}: {old_name} -> {new_name}")
+                    await conn.run_sync(do_migrate_and_drop)
+                    suffix = _format_bind_suffix(bind_key if bind_key in service.engines else "")
+                    logger.success(f"已迁移数据并删除旧表{suffix}: {old_name} -> {new_name}")
+                else:
+                    logger.info(f"新表已存在: {new_name}，无需重命名")
+            else:
+                # 目标表不存在，执行正常的重命名操作
+                def do_rename(sync_conn: Connection) -> None:
+                    mc = MigrationContext.configure(connection=sync_conn)
+                    Operations(mc).rename_table(old_name, new_name)
+
+                await conn.run_sync(do_rename)
+                suffix = _format_bind_suffix(bind_key if bind_key in service.engines else "")
+                logger.success(f"已重命名表{suffix}: {old_name} -> {new_name}")
 
         if old_name in state:
             state[new_name] = state.pop(old_name)
