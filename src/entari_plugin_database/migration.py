@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import hashlib
 import json
@@ -35,7 +36,6 @@ from sqlalchemy import (
     Column,
     DefaultClause,
     TextClause,
-    text,
 )
 from sqlalchemy.schema import Table
 
@@ -48,10 +48,15 @@ if TYPE_CHECKING:
 MigrationFunc: TypeAlias = Callable[[Operations, MigrationContext, str], None]
 StateDict: TypeAlias = dict[str, Any]
 ScriptAction: TypeAlias = Literal["upgrade", "downgrade"]
+MigrationPhase: TypeAlias = Literal["before_rename", "after_rename"]
 
 # ============= 常量定义 =============
 _STATE_FILE = local_data.get_data_file("database", "migrations_lock.json")
 _LOCK = RLock()
+_MIGRATION_LOCK = asyncio.Lock()
+_MIGRATION_EVENT = asyncio.Event()
+_MIGRATION_EVENT.clear()
+migration_finished = _MIGRATION_EVENT
 _DEFAULT_BIND_KEY = ""
 
 # SQLite 需要使用 batch 模式的操作类型
@@ -73,6 +78,7 @@ class CustomMigration:
     script_rev: str
     replace: bool
     run_always: bool
+    phase: MigrationPhase
     upgrade: MigrationFunc
     downgrade: MigrationFunc | None = field(default=None)
 
@@ -99,6 +105,7 @@ def register_custom_migration(
     script_rev: str = "1",
     replace: bool = True,
     run_always: bool = False,
+    phase: MigrationPhase = "after_rename",
 ) -> Callable[[MigrationFunc], MigrationFunc]:
     """
     注册自定义迁移脚本。
@@ -111,6 +118,7 @@ def register_custom_migration(
         script_rev: 目标脚本版本，变化触发 upgrade/downgrade
         replace: True 时跳过该表自动结构迁移
         run_always: 每次都会执行 upgrade（仍记录版本）
+        phase: 执行阶段。before_rename 在表重命名之前执行，after_rename 在之后执行。
 
     Returns:
         装饰器函数
@@ -131,6 +139,7 @@ def register_custom_migration(
                         script_rev=str(script_rev),
                         replace=replace,
                         run_always=run_always,
+                        phase=phase,
                         upgrade=func,
                     )
                 )
@@ -423,6 +432,30 @@ def _find_renamed_old_name(rename_plan: list[dict[str, Any]], new_name: str) -> 
     return None
 
 
+def _order_rename_plan(rename_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按外键依赖将被引用的表排在引用方之前。"""
+    by_new_name = {item["new_name"]: item for item in rename_plan}
+    dependencies = {
+        item["new_name"]: {
+            fk.column.table.name
+            for fk in item["model_info"]["table_obj"].foreign_keys
+            if fk.column.table.name in by_new_name
+        }
+        for item in rename_plan
+    }
+    ordered: list[dict[str, Any]] = []
+    remaining = set(by_new_name)
+    while remaining:
+        ready = sorted(name for name in remaining if not dependencies[name] & remaining)
+        if not ready:
+            # 外键环不影响表名重命名，保持确定性顺序即可。
+            ready = [sorted(remaining)[0]]
+        for name in ready:
+            ordered.append(by_new_name[name])
+            remaining.remove(name)
+    return ordered
+
+
 def _plan_migrations(module: str, models: list[type[Base]], state: StateDict) -> MigrationPlan:
     """分析模型，生成迁移计划，不执行任何数据库操作。"""
     model_info: dict[str, dict[str, Any]] = {}
@@ -664,22 +697,32 @@ async def _execute_rename_and_update_state(
                         meta.reflect(bind=sync_conn, only=[old_name, new_name])
                         old_table = meta.tables[old_name]
                         new_table = meta.tables[new_name]
-                        
+
                         # 找出两个表的公共列
                         old_cols = {col.name for col in old_table.columns}
                         new_cols = {col.name for col in new_table.columns}
                         common_cols = old_cols & new_cols
-                        
+
                         if common_cols:
-                            # 构建 INSERT INTO ... SELECT ... 语句
-                            col_list = ", ".join(f'"{col}"' for col in sorted(common_cols))
-                            insert_sql = f"INSERT INTO {new_name} ({col_list}) SELECT {col_list} FROM `{old_name}`"
-                            sync_conn.execute(text(insert_sql))
-                            logger.info(f"已复制数据从 {old_name} 到 {new_name}，涉及列: {', '.join(sorted(common_cols))}")
-                        
-                        # 删除旧表
-                        mc = MigrationContext.configure(connection=sync_conn)
-                        Operations(mc).drop_table(old_name)
+                            if sync_conn.execute(new_table.select().limit(1)).first() is not None:
+                                raise RuntimeError(
+                                    f"目标表 {new_name} 已包含数据，拒绝重复复制旧表 {old_name}；"
+                                    "请人工确认后重试"
+                                )
+                            columns = sorted(common_cols)
+                            sync_conn.execute(
+                                new_table.insert().from_select(
+                                    columns,
+                                    old_table.select().with_only_columns(
+                                        *[old_table.c[column] for column in columns]
+                                    ),
+                                )
+                            )
+                            logger.info(f"已复制数据从 {old_name} 到 {new_name}，涉及列: {', '.join(columns)}")
+
+                        # 不能删除旧表：其他仍未迁移的旧表可能通过外键引用它。
+                        # 保留旧表作为兼容副本，待所有相关表迁移后再由用户清理。
+                        logger.warning(f"保留旧表 {old_name}，请在确认外键和数据迁移完成后手动清理")
 
                     await conn.run_sync(do_migrate_and_drop)
                     suffix = _format_bind_suffix(bind_key if bind_key in service.engines else "")
@@ -717,14 +760,17 @@ async def _execute_migration_plan(
     每一步成功后立即更新并保存状态，确保崩溃恢复安全。
     """
     # 预处理重命名状态
-    for rename_info in plan.rename_plan:
+    for rename_info in _order_rename_plan(plan.rename_plan):
         old_name = rename_info["old_name"]
         new_name = rename_info["new_name"]
         if old_name in state:
             state[new_name] = state[old_name].copy()
 
+    # 执行重命名前的自定义脚本
+    await _execute_custom_scripts(plan, module, service, state, phase="before_rename")
+
     # 执行重命名
-    for rename_info in plan.rename_plan:
+    for rename_info in _order_rename_plan(plan.rename_plan):
         await _execute_rename_and_update_state(rename_info, service, state, module)
 
     # 按引擎分组处理
@@ -759,6 +805,8 @@ async def _execute_scripts_and_migrations(
     state: StateDict,
 ) -> None:
     """执行自定义脚本和自动结构迁移。"""
+    await _execute_custom_scripts(plan, module, service, state, phase="after_rename")
+
     tables_by_engine = _group_tables_by_engine(plan, service)
 
     for bind_key, tables in tables_by_engine.items():
@@ -767,20 +815,44 @@ async def _execute_scripts_and_migrations(
             logger.error(f"未找到引擎: bind_key={bind_key}, 跳过表: {tables}")
             continue
 
-        # 执行自定义脚本
-        async with engine.connect() as conn:
-            for table in sorted(tables):
-                for cm, action in plan.script_plan.get(table, []):
-                    ok = await conn.run_sync(_execute_script, table, cm, action)
-                    if ok:
-                        logger.info(f"自定义脚本{action}完成: {table} script={cm.script_id}->{cm.script_rev}")
-                        _update_state_for_script(state, table, cm, action)
-                        _save_state(state)
-
         # 执行自动结构迁移
         auto_tables = {t for t in tables if t in plan.target_tables and t not in plan.has_replacement}
         if auto_tables:
             await _execute_auto_migration(engine, auto_tables, plan, module, bind_key, state)
+
+
+async def _execute_custom_scripts(
+    plan: MigrationPlan,
+    module: str,
+    service: SqlalchemyService,
+    state: StateDict,
+    *,
+    phase: MigrationPhase,
+) -> None:
+    """按指定阶段执行自定义脚本。"""
+    tables_by_engine = _group_tables_by_engine(plan, service)
+
+    for bind_key, tables in tables_by_engine.items():
+        engine = _resolve_engine(service, bind_key)
+        if engine is None:
+            logger.error(f"未找到引擎: bind_key={bind_key}, 跳过表: {tables}")
+            continue
+
+        async with engine.connect() as conn:
+            for table in sorted(tables):
+                old_name = _find_renamed_old_name(plan.rename_plan, table)
+                script_table = old_name if phase == "before_rename" and old_name else table
+                for cm, action in plan.script_plan.get(table, []):
+                    if cm.phase != phase:
+                        continue
+                    ok = await conn.run_sync(_execute_script, script_table, cm, action)
+                    if ok:
+                        logger.info(
+                            f"自定义脚本{phase}/{action}完成: {script_table} "
+                            f"script={cm.script_id}->{cm.script_rev}"
+                        )
+                        _update_state_for_script(state, table, cm, action)
+                        _save_state(state)
 
 
 async def _execute_auto_migration(
@@ -943,7 +1015,35 @@ async def _execute_table_drops(
                 logger.error(f"删除表失败{suffix}: {t_name}: {e}")
 
 
+async def wait_for_migration() -> None:
+    """等待已排队或正在执行的数据库迁移全部结束。"""
+    while True:
+        await _MIGRATION_EVENT.wait()
+        async with _MIGRATION_LOCK:
+            if _MIGRATION_EVENT.is_set():
+                return
+
+
+def begin_migration() -> None:
+    """标记迁移已排队，供迁移调度器在创建任务前调用。"""
+    _MIGRATION_EVENT.clear()
+
+
+def migration_event() -> asyncio.Event:
+    """返回迁移完成事件；事件在无迁移运行时为 set 状态。"""
+    return _MIGRATION_EVENT
+
+
 async def run_migration(service: SqlalchemyService) -> None:
+    """串行执行数据库迁移，并在结束后唤醒等待者。"""
+    async with _MIGRATION_LOCK:
+        try:
+            await _run_migration(service)
+        finally:
+            _MIGRATION_EVENT.set()
+
+
+async def _run_migration(service: SqlalchemyService) -> None:
     """
     对所有模型生成并执行迁移。
 

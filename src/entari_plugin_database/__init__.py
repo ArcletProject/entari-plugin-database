@@ -16,7 +16,7 @@ from sqlalchemy.orm import mapped_column as mapped_column
 
 from .param import SQLDepends as SQLDepends
 from .utils import logger
-from .migration import run_migration, register_custom_migration
+from .migration import begin_migration, migration_finished, register_custom_migration, run_migration, wait_for_migration
 from .config import Config
 
 
@@ -119,6 +119,8 @@ def migration_callback(cls: type[Base], kwargs: dict):
     if _PENDING_TASKS:
         return
 
+    begin_migration()
+
     async def _delayed():
         # 给同一文件内后续类定义一点时间注册
         await service.status.wait_for("blocking")
@@ -130,6 +132,7 @@ def migration_callback(cls: type[Base], kwargs: dict):
     task = add_task(_delayed())
     _PENDING_TASKS.add(task)
     task.add_done_callback(_PENDING_TASKS.discard)
+    task.add_done_callback(lambda completed: migration_finished.set() if completed.cancelled() else None)
 
 
 def _register_callbacks():
@@ -162,6 +165,8 @@ __all__ = [
     "select",
     "SqlalchemyService",
     "register_custom_migration",
+    "wait_for_migration",
+    "migration_finished",
 ]
 
 # logger.disable("alembic.runtime.migration")

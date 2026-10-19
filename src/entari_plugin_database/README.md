@@ -28,6 +28,18 @@ Entari plugin for SQLAlchemy ORM
 - 本插件会根据模型的结构自动计算 `revision`
 - ORM 模型可以声明 `__revision__` 属性来指定特定的 `revision`
 - 迁移记录将存储在用户目录下的 `.entari/data/database/migrations_lock.json` 文件中
+- 自定义迁移脚本可通过 `phase="before_rename"` 在表重命名之前执行；默认
+  `phase="after_rename"` 在重命名之后执行
+- 其他异步任务可以调用 `await wait_for_migration()`，等待当前及排队中的迁移完成
+
+当多个表同时重命名且存在外键关系时，迁移器会优先处理被引用的表。若
+`create_all` 已经提前创建了新表，迁移器会将旧表的公共列数据复制到新表，
+但不会自动删除旧表，以避免仍存续的外键引用导致数据丢失或约束错误；确认
+迁移完成后可手动清理旧表。
+
+`wait_for_migration()` 使用进程内迁移锁串行等待；迁移失败时也会释放锁并唤醒
+等待者，避免等待任务永久阻塞。它只协调当前进程内的任务，不能替代数据库级
+锁来协调其他进程或其他服务实例。
 
 
 ## 配置
