@@ -108,8 +108,8 @@ def _setup_tablename(cls: type[Base], kwargs: dict):
         _plugin_id = plg.id
         while _plugin_id in plugin_service._subplugined:
             _plugin_id = plugin_service._subplugined[_plugin_id]
-            if plg1 := plugin.find_plugin(_plugin_id):
-                cls.__tablename__ = f"{plg1.id.replace('-', '_').replace('.', '_')}_{cls.__tablename__}"
+        if plg1 := plugin.find_plugin(_plugin_id):
+            cls.__tablename__ = f"{plg1.id.replace('-', '_').replace('.', '_')}_{cls.__tablename__}"
 
 
 _PENDING_TASKS = set()

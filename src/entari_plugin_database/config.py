@@ -94,8 +94,11 @@ class UrlInfo(BasicConfModel):
         )
 
 
+_DEFAULT_ENGINE_OPTIONS: EngineOptions = {"echo": None, "pool_pre_ping": True}
+
+
 class Config(UrlInfo):
-    options: EngineOptions = field(default_factory=lambda: {"echo": None, "pool_pre_ping": True})
+    options: EngineOptions = field(default_factory=lambda: _DEFAULT_ENGINE_OPTIONS)
     """数据库连接选项，默认为 `{"echo": None, "pool_pre_ping": True}`"""
     session_options: dict[str, Any] | None = field(default=None)
     """数据库会话选项，默认为 None。可以传入如 `{"expire_on_commit": False}` 的字典。"""

@@ -4,7 +4,7 @@ from entari_plugin_database import SQLDepends
 from sqlalchemy import select
 from example_plugin_record import Record
 
-__plugin_metadata__ = PluginMetadata(name=__name__, depend_services=["database/sqlalchemy"])
+__plugin_metadata__ = PluginMetadata(name=__name__)
 
 
 @command.on("read")
@@ -20,7 +20,7 @@ async def read(sess: Session, recs: Sequence[Record]):
 
 
 @command.command("check <name:str>")
-async def check(plugin_name: str = param("name"), recs: Sequence[Record] = SQLDepends(select(Record).where(Record.name.startswith(param("name"))))):
+async def check(plugin_name: str = param("name", str), recs: Sequence[Record] = SQLDepends(select(Record).where(Record.name.startswith(param("name", str))))):
     """检查某个任务的运行时间"""
     records = []
     for rec in recs:
