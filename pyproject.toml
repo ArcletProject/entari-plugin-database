@@ -1,12 +1,12 @@
 [project]
 name = "entari-plugin-database"
-version = "0.4.1"
+version = "0.4.2"
 description = "Entari plugin for SQLAlchemy ORM"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
 ]
 dependencies = [
-    "sqlalchemy>=2.0.42",
+    "sqlalchemy[asyncio]>=2.0.42",
     "aiosqlite>=0.21.0",
     "graia-amnesia>=0.11.6",
     "tarina<0.8.0,>=0.7.1",
