@@ -16,7 +16,14 @@ from sqlalchemy.orm import mapped_column as mapped_column
 
 from .param import SQLDepends as SQLDepends
 from .utils import logger
-from .migration import begin_migration, migration_finished, register_custom_migration, run_migration, wait_for_migration
+from .migration import (
+    begin_migration,
+    configure_migration,
+    migration_finished,
+    register_custom_migration,
+    run_migration,
+    wait_for_migration,
+)
 from .config import Config
 
 
@@ -35,6 +42,7 @@ plugin.metadata(
 )
 
 _config = plugin.get_config(Config)
+configure_migration(_config.migration_policy)
 
 try:
     plugin.add_service(
@@ -57,6 +65,7 @@ async def reload_config(event: ConfigReload, serv: SqlalchemyService):
     if event.key not in ("database", "entari_plugin_database"):
         return None
     new_conf = config_model_validate(Config, event.value)
+    configure_migration(new_conf.migration_policy)
     for engine in serv.engines.values():
         await engine.dispose(close=True)
     engine_options = {"echo": "debug", "pool_pre_ping": True}
@@ -167,6 +176,7 @@ __all__ = [
     "register_custom_migration",
     "wait_for_migration",
     "migration_finished",
+    "configure_migration",
 ]
 
 # logger.disable("alembic.runtime.migration")

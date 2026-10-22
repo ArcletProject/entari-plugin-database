@@ -106,3 +106,5 @@ class Config(UrlInfo):
     """数据库绑定配置，默认为 None。可以传入如 `{"bind1": UrlInfo(...), "bind2": UrlInfo(...)}` 的字典。"""
     create_table_at: Literal["preparing", "prepared", "blocking"] = "preparing"
     """在指定阶段创建数据库表，默认为 'preparing'。可选值为 'preparing', 'prepared', 'blocking'。"""
+    migration_policy: Literal["apply", "warn", "refuse"] = "apply"
+    """自动迁移遇到删表、删列或改列类型时的处理方式。"""

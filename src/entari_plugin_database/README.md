@@ -31,6 +31,8 @@ Entari plugin for SQLAlchemy ORM
 - 自定义迁移脚本可通过 `phase="before_rename"` 在表重命名之前执行；默认
   `phase="after_rename"` 在重命名之后执行
 - 其他异步任务可以调用 `await wait_for_migration()`，等待当前及排队中的迁移完成
+- `migration_policy` 可设置为 `apply`、`warn` 或 `refuse`，默认值为 `apply`。
+  它控制自动迁移中的删表、删列和列类型修改；自定义迁移脚本不受影响。
 
 当多个表同时重命名且存在外键关系时，迁移器会优先处理被引用的表。若
 `create_all` 已经提前创建了新表，迁移器会将旧表的公共列数据复制到新表，
@@ -40,6 +42,10 @@ Entari plugin for SQLAlchemy ORM
 `wait_for_migration()` 使用进程内迁移锁串行等待；迁移失败时也会释放锁并唤醒
 等待者，避免等待任务永久阻塞。它只协调当前进程内的任务，不能替代数据库级
 锁来协调其他进程或其他服务实例。
+
+`warn` 会记录待执行的破坏性操作后继续执行；`refuse` 会在执行对应的自动结构
+迁移前抛出异常，并保留旧 revision，后续启动会再次提示。建议使用自定义迁移
+脚本处理需要保留数据的删列、改类型或删表操作。
 
 
 ## 配置

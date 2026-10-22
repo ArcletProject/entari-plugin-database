@@ -22,6 +22,7 @@ from alembic.operations.ops import (
     CreateUniqueConstraintOp,
     DropColumnOp,
     DropConstraintOp,
+    DropTableOp,
 )
 from arclet.entari.localdata import local_data
 from graia.amnesia.builtins.sqla.model import Base
@@ -49,14 +50,16 @@ MigrationFunc: TypeAlias = Callable[[Operations, MigrationContext, str], None]
 StateDict: TypeAlias = dict[str, Any]
 ScriptAction: TypeAlias = Literal["upgrade", "downgrade"]
 MigrationPhase: TypeAlias = Literal["before_rename", "after_rename"]
+MigrationPolicy: TypeAlias = Literal["apply", "warn", "refuse"]
 
 # ============= 常量定义 =============
 _STATE_FILE = local_data.get_data_file("database", "migrations_lock.json")
 _LOCK = RLock()
 _MIGRATION_LOCK = asyncio.Lock()
 _MIGRATION_EVENT = asyncio.Event()
-_MIGRATION_EVENT.clear()
+_MIGRATION_EVENT.set()
 migration_finished = _MIGRATION_EVENT
+_MIGRATION_POLICY: MigrationPolicy = "apply"
 _DEFAULT_BIND_KEY = ""
 
 # SQLite 需要使用 batch 模式的操作类型
@@ -68,6 +71,16 @@ _BATCH_OP_TYPES: tuple[type, ...] = (
     DropColumnOp,
     CreateForeignKeyOp,
 )
+
+
+class MigrationRefusedError(RuntimeError):
+    """自动迁移因破坏性操作策略而被拒绝。"""
+
+
+def configure_migration(policy: MigrationPolicy) -> None:
+    """设置自动结构迁移的破坏性操作策略。"""
+    global _MIGRATION_POLICY
+    _MIGRATION_POLICY = policy
 
 
 @dataclass(slots=True)
@@ -342,6 +355,33 @@ def _normalize_alembic_ops(ops_list: Iterable[Any]) -> list[Any]:
         normalized.append(op)
 
     return normalized
+
+
+def _destructive_op_labels(ops_list: Iterable[Any]) -> list[str]:
+    """提取自动结构迁移中的破坏性操作描述。"""
+    labels: list[str] = []
+    for op in ops_list:
+        if isinstance(op, alembic_ops.ModifyTableOps):
+            labels.extend(_destructive_op_labels(op.ops))
+        elif isinstance(op, DropTableOp):
+            labels.append(f"删表 {op.table_name}")
+        elif isinstance(op, DropColumnOp):
+            labels.append(f"删列 {op.table_name}.{op.column_name}")
+        elif isinstance(op, AlterColumnOp) and op.modify_type is not None:
+            labels.append(f"修改列类型 {op.table_name}.{op.column_name}")
+    return labels
+
+
+def _check_destructive_policy(labels: Iterable[str]) -> None:
+    """根据配置检查破坏性操作。"""
+    labels = list(labels)
+    if not labels:
+        return
+    message = "；".join(labels)
+    if _MIGRATION_POLICY == "warn":
+        logger.warning(f"[Migration] 检测到破坏性结构操作: {message}")
+    elif _MIGRATION_POLICY == "refuse":
+        raise MigrationRefusedError(f"自动迁移已拒绝破坏性结构操作: {message}")
 
 
 def _execute_script(
@@ -766,6 +806,8 @@ async def _execute_migration_plan(
         if old_name in state:
             state[new_name] = state[old_name].copy()
 
+    _check_destructive_policy(f"删表 {table}" for table in sorted(plan.obsolete_tables))
+
     # 执行重命名前的自定义脚本
     await _execute_custom_scripts(plan, module, service, state, phase="before_rename")
 
@@ -878,6 +920,7 @@ async def _execute_auto_migration(
         script = autogen_api.produce_migrations(mc, Base.metadata)
         if not script.upgrade_ops or script.upgrade_ops.is_empty():
             return False
+        _check_destructive_policy(_destructive_op_labels(script.upgrade_ops.ops))
 
         op_runner = Operations(mc)
         upgrade_ops = script.upgrade_ops
@@ -1063,15 +1106,17 @@ async def _run_migration(service: SqlalchemyService) -> None:
 
         try:
             await _execute_migration_plan(plan, module, service, state)
+        except MigrationRefusedError:
+            raise
         except Exception as e:
             logger.exception(f"模块 {module} 的迁移过程发生未处理的异常: {e}")
+        else:
+            # 仅在整个模块迁移成功后补齐模型状态，失败或拒绝时保留旧 revision。
+            is_state_dirty = False
+            for t, info in plan.model_info.items():
+                if state.get(t, {}).get("revision") != info["revision"]:
+                    _update_state_for_model(state, t, info, module)
+                    is_state_dirty = True
 
-        # 确保所有模型状态都已更新
-        is_state_dirty = False
-        for t, info in plan.model_info.items():
-            if state.get(t, {}).get("revision") != info["revision"]:
-                _update_state_for_model(state, t, info, module)
-                is_state_dirty = True
-
-        if is_state_dirty:
-            _save_state(state)
+            if is_state_dirty:
+                _save_state(state)
