@@ -806,8 +806,6 @@ async def _execute_migration_plan(
         if old_name in state:
             state[new_name] = state[old_name].copy()
 
-    _check_destructive_policy(f"删表 {table}" for table in sorted(plan.obsolete_tables))
-
     # 执行重命名前的自定义脚本
     await _execute_custom_scripts(plan, module, service, state, phase="before_rename")
 
@@ -818,9 +816,14 @@ async def _execute_migration_plan(
     # 按引擎分组处理
     await _execute_scripts_and_migrations(plan, module, service, state)
 
-    # 删除废弃表
+    # 删除废弃表；refuse 时保留表及其状态记录，下次启动会再次提示
     if plan.obsolete_tables:
-        await _execute_table_drops(plan.obsolete_tables, service, state)
+        try:
+            _check_destructive_policy(f"删表 {table}" for table in sorted(plan.obsolete_tables))
+        except MigrationRefusedError as e:
+            logger.error(f"[Migration] 模块 {module} 跳过删表: {e}")
+        else:
+            await _execute_table_drops(plan.obsolete_tables, service, state)
 
 
 def _group_tables_by_engine(
@@ -1106,8 +1109,8 @@ async def _run_migration(service: SqlalchemyService) -> None:
 
         try:
             await _execute_migration_plan(plan, module, service, state)
-        except MigrationRefusedError:
-            raise
+        except MigrationRefusedError as e:
+            logger.error(f"[Migration] 模块 {module} 的结构迁移已被拒绝: {e}")
         except Exception as e:
             logger.exception(f"模块 {module} 的迁移过程发生未处理的异常: {e}")
         else:
