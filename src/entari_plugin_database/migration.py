@@ -504,7 +504,9 @@ def _plan_migrations(module: str, models: list[type[Base]], state: StateDict) ->
     for m in models:
         table_obj = _resolve_model_table(m)
         if table_obj is None:
-            logger.warning(f"[Migration] 跳过模型 {m.__module__}:{m.__name__}: 未能找到已定义的 Table。")
+            # 类自身 __abstract__ 为真值时，声明式映射不会为它生成表，此处未解析到 Table 属于预期情况
+            if not m.__dict__.get("__abstract__", False):
+                logger.warning(f"[Migration] 跳过模型 {m.__module__}:{m.__name__}: 未能找到已定义的 Table。")
             continue
 
         tablename = table_obj.name
